@@ -171,7 +171,7 @@ function fpg_print_free_gift_cart_js() {
     $zero_price = esc_js(strip_tags(wc_price(0)));
     ?>
     <script>
-    (function(jQuery) {
+    (() => {
         const fpgCleanup = () => {
             const giftRows = document.querySelectorAll('.fpg-free-gift');
             giftRows.forEach((row) => {
@@ -196,7 +196,7 @@ function fpg_print_free_gift_cart_js() {
         document.addEventListener('DOMContentLoaded', fpgCleanup);
         document.body.addEventListener('updated_wc_div', fpgCleanup);
         document.body.addEventListener('updated_cart_totals', fpgCleanup);
-    })(jQuery);
+    })();
     </script>
     <?php
 }
@@ -318,23 +318,74 @@ add_action( 'woocommerce_before_calculate_totals', 'fpg_cleanup_removed_gifts_on
 
 // Check and add free gifts when products are added to cart
 function fpg_check_free_gifts_on_add($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data) {
-    if (!is_admin()) {
+    if (is_admin()) {
+        return;
+    }
+
+    // Force cart totals calculation to ensure accurate numbers
+    WC()->cart->calculate_totals();
+
+    $free_product_id = get_field('free_product_gift', $product_id);
+    $threshold = floatval(get_field('free_product_gift_threshold', $product_id));
+    
+    if ($free_product_id && $threshold > 0) {
+        // Calculate total amount for this product including the new addition and any existing quantities
+        $product_total = 0;
+        foreach (WC()->cart->get_cart() as $cart_item) {
+            if ($cart_item['product_id'] == $product_id) {
+                $product_total += $cart_item['line_subtotal'];
+            }
+        }
+        
+        // Check if we meet the threshold
+        if ($product_total >= $threshold) {
+            // Check if the free product is already in cart
+            $free_product_in_cart = false;
+            foreach (WC()->cart->get_cart() as $existing_item) {
+                if ($existing_item['product_id'] == $free_product_id) {
+                    $free_product_in_cart = true;
+                    break;
+                }
+            }
+            
+            // Add the free product if not already in cart
+            if (!$free_product_in_cart) {
+                $free_product = wc_get_product($free_product_id);
+                if ($free_product && has_term('free-product-gift', 'product_cat', $free_product_id)) {
+                    WC()->cart->add_to_cart($free_product_id, 1, 0, array(), array(
+                        'is_free_gift' => true,
+                        'parent_product' => $product_id
+                    ));
+                }
+            }
+        }
+    }
+}
+// Remove existing action and add with modified priority
+remove_action('woocommerce_add_to_cart', 'fpg_check_free_gifts_on_add', 20);
+add_action('woocommerce_add_to_cart', 'fpg_check_free_gifts_on_add', 100, 6);
+
+// Check free gifts when quantity is updated in cart
+function fpg_check_gifts_on_quantity_update($cart) {
+    if (is_admin() || !WC()->cart) {
+        return;
+    }
+
+    // Force a recalculation of cart totals
+    WC()->cart->calculate_totals();
+
+    foreach (WC()->cart->get_cart() as $cart_item) {
+        if (!empty($cart_item['is_free_gift'])) {
+            continue;  // Skip free gift items
+        }
+
+        $product_id = $cart_item['product_id'];
         $free_product_id = get_field('free_product_gift', $product_id);
         $threshold = floatval(get_field('free_product_gift_threshold', $product_id));
         
         if ($free_product_id && $threshold > 0) {
-            // Calculate total amount for this product including the new addition
-            $product = wc_get_product($product_id);
-            $product_total = $product->get_price() * $quantity;
+            $product_total = $cart_item['line_subtotal'];
             
-            // Add amounts of same product already in cart
-            foreach (WC()->cart->get_cart() as $cart_item) {
-                if ($cart_item['product_id'] == $product_id && $cart_item_key !== $cart_item['key']) {
-                    $product_total += $cart_item['line_subtotal'];
-                }
-            }
-            
-            // Check if we meet the threshold
             if ($product_total >= $threshold) {
                 // Check if the free product is already in cart
                 $free_product_in_cart = false;
@@ -345,7 +396,6 @@ function fpg_check_free_gifts_on_add($cart_item_key, $product_id, $quantity, $va
                     }
                 }
                 
-                // Add the free product if not already in cart
                 if (!$free_product_in_cart) {
                     $free_product = wc_get_product($free_product_id);
                     if ($free_product && has_term('free-product-gift', 'product_cat', $free_product_id)) {
@@ -359,5 +409,15 @@ function fpg_check_free_gifts_on_add($cart_item_key, $product_id, $quantity, $va
         }
     }
 }
-add_action('woocommerce_add_to_cart', 'fpg_check_free_gifts_on_add', 20, 6);
 
+// Attach to various cart update hooks
+add_action('woocommerce_after_cart_item_quantity_update', 'fpg_check_gifts_on_quantity_update', 20, 1);
+add_action('woocommerce_check_cart_items', 'fpg_check_gifts_on_quantity_update', 20);
+add_action('woocommerce_cart_loaded_from_session', 'fpg_check_gifts_on_quantity_update', 20);
+add_action('woocommerce_update_cart_action_cart_updated', 'fpg_check_gifts_on_quantity_update', 20);
+
+// Also check when AJAX quantity is updated
+function fpg_check_gifts_on_ajax_quantity_update() {
+    fpg_check_gifts_on_quantity_update(WC()->cart);
+}
+add_action('woocommerce_ajax_cart_item_quantities_updated', 'fpg_check_gifts_on_ajax_quantity_update', 20);

@@ -258,7 +258,7 @@ function fvg_print_voucher_cart_js() {
     $zero_price = esc_js(strip_tags(wc_price(0)));
     ?>
     <script>
-    (function(jQuery) {
+    (() => {
         const fvgCleanup = () => {
             const vouchers = document.querySelectorAll('.fvg-free-voucher');
             vouchers.forEach((row) => {
@@ -283,7 +283,7 @@ function fvg_print_voucher_cart_js() {
         document.addEventListener('DOMContentLoaded', fvgCleanup);
         document.body.addEventListener('updated_wc_div', fvgCleanup);
         document.body.addEventListener('updated_cart_totals', fvgCleanup);
-    })(jQuery);
+    })();
     </script>
     <?php
 }
@@ -370,16 +370,14 @@ function fvg_cleanup_removed_vouchers_on_cart_change() {
 }
 add_action( 'woocommerce_before_calculate_totals', 'fvg_cleanup_removed_vouchers_on_cart_change', 5 );
 
-// Check and add vouchers immediately when products are added to cart
-function fvg_check_vouchers_on_add($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data) {
-    if (is_admin()) {
+// Check vouchers when quantity is updated in cart
+function fvg_check_vouchers_on_quantity_update($cart) {
+    if (is_admin() || !WC()->cart) {
         return;
     }
 
-    // Skip if the added item is itself a voucher
-    if (!empty($cart_item_data['is_free_voucher'])) {
-        return;
-    }
+    // Force a recalculation of cart totals
+    WC()->cart->calculate_totals();
 
     $args = array(
         'post_type'      => 'product',
@@ -399,13 +397,94 @@ function fvg_check_vouchers_on_add($cart_item_key, $product_id, $quantity, $vari
         return;
     }
 
-    // Calculate total amount for this product including the new addition
-    $product = wc_get_product($product_id);
-    $product_total = $product->get_price() * $quantity;
-    
-    // Add amounts of same product already in cart
+    $removed_ids = WC()->session->get('fvg_user_removed_vouchers', array());
+    $removed_ids = is_array($removed_ids) ? $removed_ids : array();
+
     foreach (WC()->cart->get_cart() as $cart_item) {
-        if ($cart_item['product_id'] == $product_id && $cart_item_key !== $cart_item['key']) {
+        if (!empty($cart_item['is_free_voucher'])) {
+            continue;  // Skip voucher items
+        }
+
+        $product_id = $cart_item['product_id'];
+        $product_total = $cart_item['line_subtotal'];
+
+        foreach ($voucher_ids as $vid) {
+            if (in_array(intval($vid), $removed_ids, true)) {
+                continue;
+            }
+
+            $threshold = floatval(get_field('free_voucher_threshold', $vid));
+            if ($threshold > 0 && $product_total >= $threshold) {
+                // Check if this voucher is already in cart
+                $voucher_in_cart = false;
+                foreach (WC()->cart->get_cart() as $existing_item) {
+                    if ($existing_item['product_id'] == $vid) {
+                        $voucher_in_cart = true;
+                        break;
+                    }
+                }
+
+                if (!$voucher_in_cart) {
+                    $voucher_product = wc_get_product($vid);
+                    if ($voucher_product) {
+                        WC()->cart->add_to_cart($vid, 1, 0, array(), array(
+                            'is_free_voucher' => true
+                        ));
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Attach to various cart update hooks
+add_action('woocommerce_after_cart_item_quantity_update', 'fvg_check_vouchers_on_quantity_update', 20, 1);
+add_action('woocommerce_check_cart_items', 'fvg_check_vouchers_on_quantity_update', 20);
+add_action('woocommerce_cart_loaded_from_session', 'fvg_check_vouchers_on_quantity_update', 20);
+add_action('woocommerce_update_cart_action_cart_updated', 'fvg_check_vouchers_on_quantity_update', 20);
+
+// Also check when AJAX quantity is updated
+function fvg_check_vouchers_on_ajax_quantity_update() {
+    fvg_check_vouchers_on_quantity_update(WC()->cart);
+}
+add_action('woocommerce_ajax_cart_item_quantities_updated', 'fvg_check_vouchers_on_ajax_quantity_update', 20);
+
+// Modify the add to cart handler to ensure proper timing
+function fvg_check_vouchers_on_add($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data) {
+    if (is_admin()) {
+        return;
+    }
+
+    // Skip if the added item is itself a voucher
+    if (!empty($cart_item_data['is_free_voucher'])) {
+        return;
+    }
+
+    // Force cart totals calculation to ensure accurate numbers
+    WC()->cart->calculate_totals();
+
+    $args = array(
+        'post_type'      => 'product',
+        'posts_per_page' => -1,
+        'tax_query'      => array(
+            array(
+                'taxonomy' => 'product_cat',
+                'field'    => 'slug',
+                'terms'    => 'free-product-voucher',
+            ),
+        ),
+        'fields' => 'ids',
+    );
+
+    $voucher_ids = get_posts($args);
+    if (empty($voucher_ids)) {
+        return;
+    }
+
+    // Calculate total amount for this product including all quantities in cart
+    $product_total = 0;
+    foreach (WC()->cart->get_cart() as $cart_item) {
+        if ($cart_item['product_id'] == $product_id) {
             $product_total += $cart_item['line_subtotal'];
         }
     }
@@ -440,6 +519,8 @@ function fvg_check_vouchers_on_add($cart_item_key, $product_id, $quantity, $vari
         }
     }
 }
-add_action('woocommerce_add_to_cart', 'fvg_check_vouchers_on_add', 20, 6 );
+// Remove existing action and add with modified priority
+remove_action('woocommerce_add_to_cart', 'fvg_check_vouchers_on_add', 20);
+add_action('woocommerce_add_to_cart', 'fvg_check_vouchers_on_add', 100, 6 );
 
 // End of file
