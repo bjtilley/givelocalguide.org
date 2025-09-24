@@ -1,0 +1,27 @@
+/**
+ * Theme Name: Blocksy Child
+ * Description: Blocksy Child theme
+ * Author: Creative Themes
+ * Template: blocksy
+ * Text Domain: blocksy
+ */
+
+.wp-block-woocommerce-product-price, p.price {
+    display: none !important;
+}
+
+.cartcontents, .amount {
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+    color: var(--theme-text-color) !important;
+}
+
+a.wpmenucart-contents.empty-wpmenucart-visible:hover {
+    color: #8A29D5 !important;
+}
+
+/* --- Fallback Bootstrap-like input-group styles for donation inputs moved to assets/css/fcd-donation.css --- */
+/* Removed: styles now loaded from assets/css/fcd-donation.css via wp_enqueue_style.
+   This file retains only theme custom styles. */

@@ -1,0 +1,52 @@
+services:
+
+  web:
+    container_name: givelocalguide-blocksy-web
+    image: urbanemu/ue-wordpress:php8.3
+    ports:
+      - 8068:80
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_ENVIRONMENT_TYPE: local
+    volumes:
+      - ./:/var/www/html:delegated
+      - ./volumes/shared:/mnt/shared
+    networks:
+      - givelocalguide-blocksy-network
+
+  db:
+    container_name: givelocalguide-blocksy-db
+    image: mariadb:10.3
+    expose:
+      - "3306"
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - ./volumes/mysql:/var/lib/mysql:delegated
+      - ./volumes/shared:/mnt/shared:delegated
+    networks:
+      - givelocalguide-blocksy-network
+
+  phpmyadmin:
+    container_name: givelocalguide-blocksy-phpmyadmin
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - 8680:80
+    environment:
+      PMA_HOST: db
+      UPLOAD_LIMIT: 100M
+    networks:
+      - givelocalguide-blocksy-network
+
+volumes:
+  wordpress:
+  db:
+
+networks:
+  givelocalguide-blocksy-network:
