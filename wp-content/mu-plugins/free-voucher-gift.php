@@ -251,12 +251,41 @@ add_filter( 'woocommerce_cart_item_subtotal', 'fvg_override_voucher_subtotal', 9
 
 // Small JS fallback to clean up any inputs other code injects client-side
 function fvg_print_voucher_cart_js() {
-    if ( ! is_cart() && ! is_checkout() ) {
+    if (!is_cart() && !is_checkout()) {
         return;
     }
 
-    $zero_price = esc_js( strip_tags( wc_price(0) ) );
-    echo "<script>(function($){function fvgCleanup(){ $('.fvg-free-voucher').each(function(){ var $r=$(this); var $sub=$r.find('.product-subtotal, .subtotal'); if($sub.length){ var data=$sub.find('.fvg-subtotal').data('fvg-price') || '{$zero_price}'; $sub.html('<span class=\\'amount\\'>'+data+'</span>'); } var $qty=$r.find('.product-quantity, .quantity'); if($qty.length){ $qty.find('input, select').remove(); if($qty.find('span.quantity').length===0){ $qty.append('<span class=\\'quantity\\'>1</span>'); } } }); } $(document).ready(fvgCleanup); $(document.body).on('updated_wc_div updated_cart_totals', fvgCleanup); })(jQuery);</script>";
+    $zero_price = esc_js(strip_tags(wc_price(0)));
+    ?>
+    <script>
+    (function(jQuery) {
+        const fvgCleanup = () => {
+            const vouchers = document.querySelectorAll('.fvg-free-voucher');
+            vouchers.forEach((row) => {
+                const subtotalEl = row.querySelector('.product-subtotal, .subtotal');
+                if (subtotalEl) {
+                    const priceSpan = subtotalEl.querySelector('.fvg-subtotal');
+                    const priceData = priceSpan ? priceSpan.dataset.fvgPrice : '<?php echo $zero_price; ?>';
+                    subtotalEl.innerHTML = `<span class="amount">${priceData}</span>`;
+                }
+
+                const qtyEl = row.querySelector('.product-quantity, .quantity');
+                if (qtyEl) {
+                    const inputs = qtyEl.querySelectorAll('input, select');
+                    inputs.forEach(input => input.remove());
+                    if (!qtyEl.querySelector('span.quantity')) {
+                        qtyEl.insertAdjacentHTML('beforeend', '<span class="quantity">1</span>');
+                    }
+                }
+            });
+        };
+
+        document.addEventListener('DOMContentLoaded', fvgCleanup);
+        document.body.addEventListener('updated_wc_div', fvgCleanup);
+        document.body.addEventListener('updated_cart_totals', fvgCleanup);
+    })(jQuery);
+    </script>
+    <?php
 }
 add_action( 'wp_footer', 'fvg_print_voucher_cart_js' );
 
@@ -340,5 +369,77 @@ function fvg_cleanup_removed_vouchers_on_cart_change() {
     }
 }
 add_action( 'woocommerce_before_calculate_totals', 'fvg_cleanup_removed_vouchers_on_cart_change', 5 );
+
+// Check and add vouchers immediately when products are added to cart
+function fvg_check_vouchers_on_add($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data) {
+    if (is_admin()) {
+        return;
+    }
+
+    // Skip if the added item is itself a voucher
+    if (!empty($cart_item_data['is_free_voucher'])) {
+        return;
+    }
+
+    $args = array(
+        'post_type'      => 'product',
+        'posts_per_page' => -1,
+        'tax_query'      => array(
+            array(
+                'taxonomy' => 'product_cat',
+                'field'    => 'slug',
+                'terms'    => 'free-product-voucher',
+            ),
+        ),
+        'fields' => 'ids',
+    );
+
+    $voucher_ids = get_posts($args);
+    if (empty($voucher_ids)) {
+        return;
+    }
+
+    // Calculate total amount for this product including the new addition
+    $product = wc_get_product($product_id);
+    $product_total = $product->get_price() * $quantity;
+    
+    // Add amounts of same product already in cart
+    foreach (WC()->cart->get_cart() as $cart_item) {
+        if ($cart_item['product_id'] == $product_id && $cart_item_key !== $cart_item['key']) {
+            $product_total += $cart_item['line_subtotal'];
+        }
+    }
+
+    $removed_ids = WC()->session->get('fvg_user_removed_vouchers', array());
+    $removed_ids = is_array($removed_ids) ? $removed_ids : array();
+
+    foreach ($voucher_ids as $vid) {
+        if (in_array(intval($vid), $removed_ids, true)) {
+            continue;
+        }
+
+        $threshold = floatval(get_field('free_voucher_threshold', $vid));
+        if ($threshold > 0 && $product_total >= $threshold) {
+            // Check if this voucher is already in cart
+            $voucher_in_cart = false;
+            foreach (WC()->cart->get_cart() as $existing_item) {
+                if ($existing_item['product_id'] == $vid) {
+                    $voucher_in_cart = true;
+                    break;
+                }
+            }
+
+            if (!$voucher_in_cart) {
+                $voucher_product = wc_get_product($vid);
+                if ($voucher_product) {
+                    WC()->cart->add_to_cart($vid, 1, 0, array(), array(
+                        'is_free_voucher' => true
+                    ));
+                }
+            }
+        }
+    }
+}
+add_action('woocommerce_add_to_cart', 'fvg_check_vouchers_on_add', 20, 6 );
 
 // End of file
