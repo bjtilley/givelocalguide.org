@@ -50,7 +50,7 @@ function handle_custom_price_add_to_cart($cart_item_data, $product_id) {
         // Server-side sanity: ensure minimum donation amount
         if ($new_amount < 5.00) {
             wc_add_notice( __( 'Minimum donation amount is $5.00.', 'woocommerce' ), 'error' );
-            return false;
+            return $cart_item_data;
         }
 
         // Look for existing product in cart
@@ -70,17 +70,20 @@ function handle_custom_price_add_to_cart($cart_item_data, $product_id) {
                     number_format($total_amount, 2)
                 ));
 
-                // Prevent new item from being added
-                return false;
-            }
-        }
+                // Prevent default add (we set session flag) — return cart data to keep filter contract
+                return $cart_item_data;
+             }
+         }
 
-        // Only reached if product wasn't in cart
-        $cart_item_data['custom_price'] = $new_amount;
-    }
-    return $cart_item_data;
-}
-add_filter('woocommerce_add_cart_item_data', 'handle_custom_price_add_to_cart', 10, 2);
+         // Only reached if product wasn't in cart
+         $cart_item_data['custom_price'] = $new_amount;
+
+         // For newly added donation, let WooCommerce's add-to-cart process proceed; our
+         // add_cart_item_data will attach the custom_price during the add.
+     }
+     return $cart_item_data;
+ }
+ add_filter('woocommerce_add_cart_item_data', 'handle_custom_price_add_to_cart', 10, 2);
 
 // Apply custom price to cart item and clean up phantom items
 function apply_custom_price_to_cart($cart) {
@@ -123,65 +126,18 @@ function apply_custom_price_to_cart($cart) {
 }
 add_action('woocommerce_before_calculate_totals', 'apply_custom_price_to_cart', 10, 1);
 
-// Remove other cart validation filters that might interfere
-remove_all_filters('woocommerce_add_to_cart_validation', 100);
-remove_all_filters('woocommerce_add_to_cart', 100);
+// NOTE: removed session-flag based duplicate prevention — we now handle existing donation
+// updates in validation (see `gl_handle_existing_donation_before_add`) and avoid
+// calling add_to_cart manually for archive forms so WooCommerce's normal flow can run.
 
-// Add our single validation filter
-add_filter('woocommerce_add_to_cart_validation', function($passed, $product_id, $quantity) {
-    // Basic validation only
-    return $passed;
-}, 10, 3);
-
-// Handle archive page donations
-function handle_archive_donations() {
-    if (!is_admin() && isset($_POST['add-to-cart']) && isset($_POST['quantity'])) {
-        try {
-            $product_id = absint($_POST['add-to-cart']);
-            $quantity = floatval($_POST['quantity']);
-
-            if ($quantity < 5) {
-                wc_add_notice(__('Minimum donation amount is $5.00.', 'woocommerce'), 'error');
-                return;
-            }
-
-            // Check if product exists in cart
-            foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
-                if ($cart_item['product_id'] == $product_id) {
-                    $current_amount = isset($cart_item['custom_price']) ? floatval($cart_item['custom_price']) : 0;
-                    $total_amount = $current_amount + $quantity;
-
-                    // Update existing item
-                    WC()->cart->cart_contents[$cart_item_key]['custom_price'] = $total_amount;
-                    WC()->cart->set_session();
-
-                    wc_add_notice(sprintf(
-                        __('Donation amount increased to $%s.', 'woocommerce'),
-                        number_format($total_amount, 2)
-                    ));
-
-                    // Redirect to cart to prevent double-submission
-                    wp_safe_redirect(wc_get_cart_url());
-                    exit;
-                }
-            }
-
-            // Add new item if not found
-            WC()->cart->add_to_cart($product_id, 1, 0, array(), array(
-                'custom_price' => $quantity
-            ));
-
-            // Redirect to cart to prevent double-submission
-            wp_safe_redirect(wc_get_cart_url());
-            exit;
-
-        } catch (Exception $e) {
-            error_log('Archive page donation error: ' . $e->getMessage());
-            wc_add_notice(__('There was an error processing your donation. Please try again.', 'woocommerce'), 'error');
-        }
-    }
-}
-add_action('wp_loaded', 'handle_archive_donations', 20);
+// Note: archive/loop form submissions are handled by WooCommerce's native add-to-cart
+// flow. We intentionally do not call add_to_cart() manually here because that can
+// result in the product being added twice (once manually and once by WooCommerce).
+// Existing donation updates are handled in `gl_handle_existing_donation_before_add`
+// (validation-time) which updates the line item and prevents the default add. For
+// new donations, `handle_custom_price_add_to_cart` attaches a `custom_price` entry
+// to the cart item data so the item's price will be set correctly in
+// `apply_custom_price_to_cart`.
 
 // Remove quantity controls from product pages and set constraints
 add_filter('woocommerce_quantity_input_args', function($args, $product = null) {
@@ -369,67 +325,52 @@ function handle_cart_update_price() {
  }
  add_action('woocommerce_before_calculate_totals', 'handle_cart_update_price', 5);
 
-// Prevent duplicate items in cart
-add_filter('woocommerce_add_to_cart_validation', function($passed, $product_id, $quantity) {
-    if (isset($_POST['quantity'])) {
-        foreach (WC()->cart->get_cart() as $cart_item) {
+// Validation: if this product already exists in the cart and the add is coming from our
+// donation quantity input, update the existing line item's custom_price and prevent
+// WooCommerce from adding a new duplicate line item.
+function gl_handle_existing_donation_before_add($passed, $product_id, $quantity) {
+    if (!empty($_POST['quantity'])) {
+        $amount = floatval($_POST['quantity']);
+
+        // Enforce minimum
+        if ($amount < 5) {
+            wc_add_notice(__('Minimum donation amount is $5.00.', 'woocommerce'), 'error');
+            return false;
+        }
+
+        foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
             if ($cart_item['product_id'] == $product_id) {
-                // Allow the add_cart_item_data filter to handle the update
-                return true;
+                $current_amount = isset($cart_item['custom_price']) ? floatval($cart_item['custom_price']) : 0;
+                $total_amount = $current_amount + $amount;
+
+                // Update existing item
+                WC()->cart->cart_contents[$cart_item_key]['custom_price'] = $total_amount;
+                WC()->cart->set_session();
+
+                wc_add_notice(sprintf(
+                    __('Donation amount increased to $%s.', 'woocommerce'),
+                    number_format($total_amount, 2)
+                ));
+
+                // Prevent WooCommerce from performing the default add-to-cart
+                return false;
             }
         }
     }
+
     return $passed;
-}, 10, 3);
+}
+add_filter('woocommerce_add_to_cart_validation', 'gl_handle_existing_donation_before_add', 5, 3);
 
-// Handle archive page donations
-add_action('wp_loaded', function() {
-    if (!is_admin() && isset($_POST['add-to-cart']) && isset($_POST['quantity'])) {
-        try {
-            $product_id = absint($_POST['add-to-cart']);
-            $quantity = floatval($_POST['quantity']);
-
-            if ($quantity < 5) {
-                wc_add_notice(__('Minimum donation amount is $5.00.', 'woocommerce'), 'error');
-                return;
-            }
-
-            // Check if product exists in cart
-            foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
-                if ($cart_item['product_id'] == $product_id) {
-                    $current_amount = isset($cart_item['custom_price']) ? floatval($cart_item['custom_price']) : 0;
-                    $total_amount = $current_amount + $quantity;
-
-                    // Update existing item
-                    WC()->cart->cart_contents[$cart_item_key]['custom_price'] = $total_amount;
-                    WC()->cart->set_session();
-
-                    wc_add_notice(sprintf(
-                        __('Donation amount increased to $%s.', 'woocommerce'),
-                        number_format($total_amount, 2)
-                    ));
-
-                    // Redirect to cart to prevent double-submission
-                    wp_safe_redirect(wc_get_cart_url());
-                    exit;
-                }
-            }
-
-            // Add new item if not found
-            WC()->cart->add_to_cart($product_id, 1, 0, array(), array(
-                'custom_price' => $quantity
-            ));
-
-            // Redirect to cart to prevent double-submission
-            wp_safe_redirect(wc_get_cart_url());
-            exit;
-
-        } catch (Exception $e) {
-            error_log('Archive page donation error: ' . $e->getMessage());
-            wc_add_notice(__('There was an error processing your donation. Please try again.', 'woocommerce'), 'error');
-        }
+// Prevent redirect-to-cart when adding donations (keep shopper on same page)
+function gl_disable_redirect_to_cart_for_donations($url) {
+    if (!empty($_POST['quantity'])) {
+        // Returning false/empty tells WooCommerce not to redirect
+        return false;
     }
-}, 20);
+    return $url;
+}
+add_filter('woocommerce_add_to_cart_redirect', 'gl_disable_redirect_to_cart_for_donations');
 
-
-
+// NOTE: removed anonymous add_to_cart_validation filter that returned `true` for existing
+// donation products because it conflicted with our `gl_prevent_duplicate_addition_for_handled_donation`
