@@ -86,6 +86,29 @@ function fpg_adjust_free_gift_price($cart) {
 }
 add_action('woocommerce_before_calculate_totals', 'fpg_adjust_free_gift_price', 10);
 
+// When a user removes a free gift, remember it in the session so auto-add will skip that product
+function fpg_record_user_removed_gift($cart_item_key, $cart) {
+    if (empty($cart) || !isset($cart->removed_cart_contents)) {
+        return;
+    }
+
+    if (isset($cart->removed_cart_contents[$cart_item_key])) {
+        $removed = $cart->removed_cart_contents[$cart_item_key];
+        if (!empty($removed['is_free_gift'])) {
+            $removed_ids = WC()->session->get('fpg_user_removed_gifts', array());
+            $removed_ids = is_array($removed_ids) ? $removed_ids : array();
+            $removed_ids[] = intval($removed['product_id']);
+            $removed_ids = array_unique($removed_ids);
+            WC()->session->set('fpg_user_removed_gifts', $removed_ids);
+
+            if (!wp_doing_ajax()) {
+                wc_add_notice(__('Free gift removed. It will not be re-added automatically.', 'woocommerce'), 'notice');
+            }
+        }
+    }
+}
+add_action( 'woocommerce_cart_item_removed', 'fpg_record_user_removed_gift', 20, 2 );
+
 // Remove free gift if parent product is removed or threshold is no longer met
 function fpg_maybe_remove_free_gifts() {
     if (!WC()->cart) {
@@ -117,7 +140,9 @@ function fpg_maybe_remove_free_gifts() {
     // Remove invalid free gifts
     foreach ($gifts_to_remove as $cart_item_key) {
         WC()->cart->remove_cart_item($cart_item_key);
-        wc_add_notice(__('A free gift has been removed as it no longer qualifies.', 'woocommerce'), 'notice');
+        if (!wp_doing_ajax()) {
+            wc_add_notice(__('A free gift has been removed as it no longer qualifies.', 'woocommerce'), 'notice');
+        }
     }
 }
 add_action('woocommerce_before_calculate_totals', 'fpg_maybe_remove_free_gifts', 15);
@@ -203,26 +228,6 @@ function fpg_print_free_gift_cart_js() {
 add_action( 'wp_footer', 'fpg_print_free_gift_cart_js' );
 
 // --- NEW: prevent immediately re-adding a free gift that the user manually removed ---
-// When a user removes a free gift, remember it in the session so auto-add will skip that product
-function fpg_record_user_removed_gift( $cart_item_key, $cart ) {
-    if ( empty( $cart ) || ! isset( $cart->removed_cart_contents ) ) {
-        return;
-    }
-
-    if ( isset( $cart->removed_cart_contents[ $cart_item_key ] ) ) {
-        $removed = $cart->removed_cart_contents[ $cart_item_key ];
-        if ( ! empty( $removed['is_free_gift'] ) ) {
-            $removed_ids = WC()->session->get( 'fpg_user_removed_gifts', array() );
-            $removed_ids = is_array( $removed_ids ) ? $removed_ids : array();
-            $removed_ids[] = intval( $removed['product_id'] );
-            $removed_ids = array_unique( $removed_ids );
-            WC()->session->set( 'fpg_user_removed_gifts', $removed_ids );
-            // Inform the user
-            wc_add_notice( __( 'Free gift removed. It will not be re-added automatically.', 'woocommerce' ), 'notice' );
-        }
-    }
-}
-add_action( 'woocommerce_cart_item_removed', 'fpg_record_user_removed_gift', 20, 2 );
 
 // When auto-adding gifts, skip any product IDs the user removed this session
 function fpg_check_and_add_free_gifts_filtered() {

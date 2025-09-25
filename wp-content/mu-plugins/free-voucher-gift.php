@@ -127,6 +127,29 @@ function fvg_adjust_voucher_price( $cart ) {
 }
 add_action( 'woocommerce_before_calculate_totals', 'fvg_adjust_voucher_price', 10 );
 
+// Remember vouchers a user manually removes this session so we don't auto-re-add them immediately
+function fvg_record_user_removed_voucher($cart_item_key, $cart) {
+    if (empty($cart) || !isset($cart->removed_cart_contents)) {
+        return;
+    }
+
+    if (isset($cart->removed_cart_contents[$cart_item_key])) {
+        $removed = $cart->removed_cart_contents[$cart_item_key];
+        if (!empty($removed['is_free_voucher'])) {
+            $removed_ids = WC()->session->get('fvg_user_removed_vouchers', array());
+            $removed_ids = is_array($removed_ids) ? $removed_ids : array();
+            $removed_ids[] = intval($removed['product_id']);
+            $removed_ids = array_unique($removed_ids);
+            WC()->session->set('fvg_user_removed_vouchers', $removed_ids);
+
+            if (!wp_doing_ajax()) {
+                wc_add_notice(__('Free voucher removed. It will not be re-added automatically.', 'woocommerce'), 'notice');
+            }
+        }
+    }
+}
+add_action( 'woocommerce_cart_item_removed', 'fvg_record_user_removed_voucher', 20, 2 );
+
 // Remove voucher if threshold not met anymore
 function fvg_maybe_remove_vouchers() {
     if ( ! WC()->cart ) {
@@ -193,7 +216,9 @@ function fvg_maybe_remove_vouchers() {
 
     foreach ( $gifts_to_remove as $key ) {
         WC()->cart->remove_cart_item( $key );
-        wc_add_notice( __( 'A free voucher has been removed as it no longer qualifies.', 'woocommerce' ), 'notice' );
+        if (!wp_doing_ajax()) {
+            wc_add_notice(__('A free voucher has been removed as it no longer qualifies.', 'woocommerce'), 'notice');
+        }
     }
 }
 add_action( 'woocommerce_before_calculate_totals', 'fvg_maybe_remove_vouchers', 15 );
@@ -288,26 +313,6 @@ function fvg_print_voucher_cart_js() {
     <?php
 }
 add_action( 'wp_footer', 'fvg_print_voucher_cart_js' );
-
-// Remember vouchers a user manually removes this session so we don't auto-re-add them immediately
-function fvg_record_user_removed_voucher( $cart_item_key, $cart ) {
-    if ( empty( $cart ) || ! isset( $cart->removed_cart_contents ) ) {
-        return;
-    }
-
-    if ( isset( $cart->removed_cart_contents[ $cart_item_key ] ) ) {
-        $removed = $cart->removed_cart_contents[ $cart_item_key ];
-        if ( ! empty( $removed['is_free_voucher'] ) ) {
-            $removed_ids = WC()->session->get( 'fvg_user_removed_vouchers', array() );
-            $removed_ids = is_array( $removed_ids ) ? $removed_ids : array();
-            $removed_ids[] = intval( $removed['product_id'] );
-            $removed_ids = array_unique( $removed_ids );
-            WC()->session->set( 'fvg_user_removed_vouchers', $removed_ids );
-            wc_add_notice( __( 'Free voucher removed. It will not be re-added automatically.', 'woocommerce' ), 'notice' );
-        }
-    }
-}
-add_action( 'woocommerce_cart_item_removed', 'fvg_record_user_removed_voucher', 20, 2 );
 
 // When cart is emptied or checkout happens, clear the removed-vouchers session so behavior resets
 function fvg_clear_removed_vouchers_session() {
