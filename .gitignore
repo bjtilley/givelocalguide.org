@@ -139,6 +139,7 @@ Thumbs.db
 # add your own entries here
 !wp-content/mu-plugins/free-product-gift.php
 !wp-content/mu-plugins/free-voucher-gift.php
+!wp-content/mu-plugins/cart-calculation-fixes.php
 # !wp-content/plugins/example-plugin/
 # !wp-content/themes/example-theme/
 !wp-content/themes/blocksy/
