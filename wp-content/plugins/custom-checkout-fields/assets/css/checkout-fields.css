@@ -1,0 +1,32 @@
+.donation-honor-field,
+.donation-message-field,
+.donation-display-name-field {
+    padding: 15px 0;
+    margin-bottom: 10px;
+}
+
+.donation-message-field textarea {
+    min-height: 100px;
+}
+
+/* Style the section header */
+.woocommerce-checkout h3:contains("Donation Information") {
+    margin-top: 30px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+/* Validation styling */
+.woocommerce-checkout .form-row.validate-error {
+    border-left: 3px solid #b81c23;
+    padding-left: 15px;
+}
+
+/* Mobile responsiveness */
+@media screen and (max-width: 768px) {
+    .donation-honor-field,
+    .donation-message-field,
+    .donation-display-name-field {
+        width: 100%;
+    }
+}
