@@ -38,3 +38,7 @@ a.wpmenucart-contents.empty-wpmenucart-visible:hover {
 .woocommerce-form-login-toggle .woocommerce-info {
     border: 2px solid var(--theme-palette-color-1);
 }
+
+.anonymous-donation-field {
+    margin-bottom: 40px;
+}
