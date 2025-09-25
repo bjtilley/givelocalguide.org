@@ -495,3 +495,11 @@ function gl_clean_free_items_flags($cart) {
 }
 add_action('woocommerce_before_calculate_totals', 'gl_clean_free_items_flags', 1);
 
+// Alter the order notes label on checkout
+add_filter('woocommerce_checkout_fields', function ($fields) {
+    // Change the label for the order notes textarea
+    if (isset($fields['order']['order_comments'])) {
+        $fields['order']['order_comments']['label'] = __('If you would like opt out of receiving your incentive package or you would like to make your donation(s) anonymously, please tell us here. You can also give us any special instructions about contacting you or delivering your incentives, offer feedback on Give!Local or tell us anything else you think might be relevant. Thank you!', 'givelocalguide');
+    }
+    return $fields;
+});
