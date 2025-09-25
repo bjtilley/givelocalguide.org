@@ -57,11 +57,12 @@ function handle_custom_price_add_to_cart($cart_item_data, $product_id) {
         foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
             if ($cart_item['product_id'] == $product_id) {
                 // Add new amount to existing amount
-                $current_amount = isset($cart_item['custom_price']) ? floatval($cart_item['custom_price']) : 0;
+                $current_amount = isset($cart_item['gl_custom_price']) ? floatval($cart_item['gl_custom_price']) : 0;
                 $total_amount = $current_amount + $new_amount;
 
                 // Update the existing cart item
-                WC()->cart->cart_contents[$cart_item_key]['custom_price'] = $total_amount;
+                WC()->cart->cart_contents[$cart_item_key]['gl_custom_price'] = $total_amount;
+                WC()->cart->cart_contents[$cart_item_key]['gl_is_donation'] = true; // mark explicitly as donation
                 WC()->cart->set_session();
 
                 // Success message
@@ -76,7 +77,8 @@ function handle_custom_price_add_to_cart($cart_item_data, $product_id) {
          }
 
          // Only reached if product wasn't in cart
-         $cart_item_data['custom_price'] = $new_amount;
+         $cart_item_data['gl_custom_price'] = $new_amount;
+         $cart_item_data['gl_is_donation'] = true; // mark new items as donation
 
          // For newly added donation, let WooCommerce's add-to-cart process proceed; our
          // add_cart_item_data will attach the custom_price during the add.
@@ -98,8 +100,9 @@ function apply_custom_price_to_cart($cart) {
 
         // First pass: remove phantom items and set prices
         foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
-            if (isset($cart_item['custom_price'])) {
-                $price = floatval($cart_item['custom_price']);
+            // Only operate on items explicitly marked as donations
+            if (!empty($cart_item['gl_is_donation'])) {
+                $price = floatval(isset($cart_item['gl_custom_price']) ? $cart_item['gl_custom_price'] : 0);
                 if ($price <= 0) {
                     $cart->remove_cart_item($cart_item_key);
                     continue;
@@ -284,7 +287,16 @@ add_filter('woocommerce_is_sold_individually', 'custom_remove_cart_quantity_fiel
 
 // Replace subtotal column with input field
 function replace_cart_subtotal_with_input($product_subtotal, $cart_item, $cart_item_key) {
-    if (isset($cart_item['custom_price'])) {
+    $has_donation_price = !empty($cart_item['gl_is_donation']) && isset($cart_item['gl_custom_price']) && floatval($cart_item['gl_custom_price']) > 0;
+    if ($has_donation_price) {
+        // On checkout we should not show an editable input — only display the amount as text
+        if (is_checkout()) {
+            $price = floatval($cart_item['gl_custom_price']);
+            // Use WooCommerce formatter for consistent currency formatting
+            return wc_price($price);
+        }
+
+        // Fixed: close the div opening tag so HTML is valid and doesn't bleed into other cells
         $format = '<div class="input-group gl-input-group">'
                 . '<span class="input-group-text gl-input-group-text">$</span>'
                 . '<input type="number" name="cart_price_update[%1$s]" value="%2$.2f" class="price-update-input form-control gl-amount-input" data-cart-item-key="%1$s" inputmode="decimal" step="1" min="5" style="width:100px;" />'
@@ -293,13 +305,23 @@ function replace_cart_subtotal_with_input($product_subtotal, $cart_item, $cart_i
         $input = sprintf(
             $format,
             esc_attr($cart_item_key),
-            floatval($cart_item['custom_price'])
+            floatval($cart_item['gl_custom_price'])
         );
         return $input;
     }
     return $product_subtotal;
 }
 add_filter('woocommerce_cart_item_subtotal', 'replace_cart_subtotal_with_input', 10, 3);
+
+// Ensure checkout displays non-editable price for donation line items (run early)
+function gl_disable_subtotal_input_on_checkout($product_subtotal, $cart_item, $cart_item_key) {
+    if (is_checkout() && !empty($cart_item['gl_is_donation']) && isset($cart_item['gl_custom_price']) && floatval($cart_item['gl_custom_price']) > 0) {
+        $price = floatval($cart_item['gl_custom_price']);
+        return wc_price($price);
+    }
+    return $product_subtotal;
+}
+add_filter('woocommerce_cart_item_subtotal', 'gl_disable_subtotal_input_on_checkout', 1, 3);
 
 // Handle cart updates including price changes
 function handle_cart_update_price() {
@@ -310,14 +332,20 @@ function handle_cart_update_price() {
     // Check for price updates
     if (isset($_POST['cart_price_update']) && is_array($_POST['cart_price_update'])) {
         foreach ($_POST['cart_price_update'] as $cart_item_key => $price) {
-            if (isset(WC()->cart->get_cart()[$cart_item_key])) {
+            $cart_contents = WC()->cart->get_cart();
+            if (isset($cart_contents[$cart_item_key])) {
+                // Only apply updates to items that are marked as donation items
+                if (empty($cart_contents[$cart_item_key]['gl_is_donation'])) {
+                    continue;
+                }
+
                 $new_price = floatval($price);
                 // Enforce minimum donation amount on cart update
                 if ( $new_price < 5.00 ) {
                     $new_price = 5.00;
                     wc_add_notice( __( 'Donation amount adjusted to minimum of $5.00.', 'woocommerce' ), 'notice' );
                 }
-                WC()->cart->cart_contents[$cart_item_key]['custom_price'] = $new_price;
+                WC()->cart->cart_contents[$cart_item_key]['gl_custom_price'] = $new_price;
              }
          }
          WC()->cart->set_session();
@@ -340,11 +368,12 @@ function gl_handle_existing_donation_before_add($passed, $product_id, $quantity)
 
         foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
             if ($cart_item['product_id'] == $product_id) {
-                $current_amount = isset($cart_item['custom_price']) ? floatval($cart_item['custom_price']) : 0;
+                $current_amount = isset($cart_item['gl_custom_price']) ? floatval($cart_item['gl_custom_price']) : 0;
                 $total_amount = $current_amount + $amount;
 
                 // Update existing item
-                WC()->cart->cart_contents[$cart_item_key]['custom_price'] = $total_amount;
+                WC()->cart->cart_contents[$cart_item_key]['gl_custom_price'] = $total_amount;
+                WC()->cart->cart_contents[$cart_item_key]['gl_is_donation'] = true; // ensure marked as donation
                 WC()->cart->set_session();
 
                 wc_add_notice(sprintf(
@@ -374,3 +403,95 @@ add_filter('woocommerce_add_to_cart_redirect', 'gl_disable_redirect_to_cart_for_
 
 // NOTE: removed anonymous add_to_cart_validation filter that returned `true` for existing
 // donation products because it conflicted with our `gl_prevent_duplicate_addition_for_handled_donation`
+
+// Fallback: on checkout, replace any donation price inputs with non-editable text via JS
+function gl_disable_price_inputs_on_checkout_js() {
+    if (!is_checkout()) {
+        return;
+    }
+    ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Select known input shapes we created or others that use the cart_price_update name
+        var selectors = ['input.price-update-input', 'input[name^="cart_price_update"]'];
+        var inputs = document.querySelectorAll(selectors.join(','));
+        inputs.forEach(function(input) {
+            try {
+                var value = parseFloat(input.value || input.getAttribute('value') || 0);
+                if (isNaN(value)) value = 0;
+                var formatted = '$' + value.toFixed(2);
+
+                // Prefer replacing the entire input group if present
+                var wrapper = input.closest('.gl-input-group') || input.closest('.input-group') || input.parentNode;
+                var span = document.createElement('span');
+                span.className = 'gl-checkout-price-text';
+                span.textContent = formatted;
+                // Keep styling consistent: mimic wc_price by using the element's font and spacing
+                wrapper.parentNode.replaceChild(span, wrapper);
+            } catch (e) {
+                // silent
+                console.error('gl_disable_price_inputs_on_checkout_js error', e);
+            }
+        });
+    });
+    </script>
+    <?php
+}
+add_action('wp_footer', 'gl_disable_price_inputs_on_checkout_js', 20);
+
+// Last-resort override: make sure checkout always shows plain text for donation subtotals
+function gl_force_subtotal_text_on_checkout($product_subtotal, $cart_item, $cart_item_key) {
+    if (is_checkout() && !empty($cart_item['gl_is_donation']) && isset($cart_item['gl_custom_price']) && floatval($cart_item['gl_custom_price']) > 0) {
+        return wc_price(floatval($cart_item['gl_custom_price']));
+    }
+    return $product_subtotal;
+}
+add_filter('woocommerce_cart_item_subtotal', 'gl_force_subtotal_text_on_checkout', 9999, 3);
+
+// High-priority safety: ensure free gifts and vouchers always display $0.00 for subtotal
+function gl_force_free_item_zero_subtotal($product_subtotal, $cart_item, $cart_item_key) {
+    if (!empty($cart_item['is_free_gift']) || !empty($cart_item['is_free_voucher'])) {
+        return wc_price(0);
+    }
+    return $product_subtotal;
+}
+add_filter('woocommerce_cart_item_subtotal', 'gl_force_free_item_zero_subtotal', 10001, 3);
+
+// Add CSS on checkout to hide any remaining donation amount inputs (safety net)
+function gl_hide_price_inputs_on_checkout_css() {
+    if (!is_checkout()) {
+        return;
+    }
+    echo "<style>.price-update-input, input[name^=\"cart_price_update\"], .gl-input-group .gl-amount-input{display:none!important} .gl-checkout-price-text{font-weight:600; display:inline-block; margin-left:4px;}</style>";
+}
+add_action('wp_head', 'gl_hide_price_inputs_on_checkout_css', 20);
+
+// Early cleanup: ensure free gifts/vouchers never carry donation flags or prices
+function gl_clean_free_items_flags($cart) {
+    if (!WC()->cart) {
+        return;
+    }
+
+    foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
+        if (!empty($cart_item['is_free_gift']) || !empty($cart_item['is_free_voucher'])) {
+            // Remove any donation metadata that might have been set erroneously
+            if (isset(WC()->cart->cart_contents[$cart_item_key]['gl_custom_price'])) {
+                unset(WC()->cart->cart_contents[$cart_item_key]['gl_custom_price']);
+            }
+            if (isset(WC()->cart->cart_contents[$cart_item_key]['gl_is_donation'])) {
+                unset(WC()->cart->cart_contents[$cart_item_key]['gl_is_donation']);
+            }
+
+            // Explicitly force the item price to zero
+            if (isset($cart_item['data']) && is_object($cart_item['data'])) {
+                $cart_item['data']->set_price(0);
+                // also clear any stored original_price if present
+                if (isset(WC()->cart->cart_contents[$cart_item_key]['original_price'])) {
+                    WC()->cart->cart_contents[$cart_item_key]['original_price'] = 0;
+                }
+            }
+        }
+    }
+}
+add_action('woocommerce_before_calculate_totals', 'gl_clean_free_items_flags', 1);
+
