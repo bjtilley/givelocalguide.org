@@ -1,10 +1,27 @@
 services:
 
-  web:
-    container_name: givelocalguide-blocksy-web
-    image: urbanemu/ue-wordpress:php8.3
+  nginx:
+    image: nginx:1.25-alpine
+    platform: linux/arm64
     ports:
-      - 8068:80
+      - "8068:443"
+    environment:
+      - NGINX_HOST=localhost
+      - NGINX_PORT=443
+    volumes:
+      - ./:/var/www/html:delegated
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./docker/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - wordpress
+    networks:
+      - givelocalguide-blocksy-network
+    command: sh -c "nginx -g 'daemon off;'"
+
+  wordpress:
+    container_name: givelocalguide-blocksy-web
+    image: wordpress:php8.2-fpm
+    platform: linux/arm64
     environment:
       WORDPRESS_DB_HOST: db
       WORDPRESS_DB_NAME: wordpress
@@ -35,7 +52,7 @@ services:
 
   phpmyadmin:
     container_name: givelocalguide-blocksy-phpmyadmin
-    image: phpmyadmin/phpmyadmin
+    image: arm64v8/phpmyadmin
     ports:
       - 8680:80
     environment:
