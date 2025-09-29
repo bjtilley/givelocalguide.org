@@ -42,3 +42,68 @@ a.wpmenucart-contents.empty-wpmenucart-visible:hover {
 .anonymous-donation-field {
     margin-bottom: 40px;
 }
+
+.gl__raised_so_far {
+    color: #8A29D5;
+}
+
+/* Blockquote formatting for products */
+blockquote.gl__testimonial {
+    padding: 22px 22px 22px 48px;
+    font-size: 16px;
+    position: relative;
+    font-style: italic;
+    background: #eeeeee;
+}
+blockquote.gl__testimonial::before {
+    content: "\201C";
+    font-size: 75px;
+    font-style: normal;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: bold;
+    color: var(--theme-palette-color-1);
+    position: absolute;
+    left: 10px;
+    top: -15px;
+}
+.gl__referee {
+    margin-top: 5px;
+    text-align: right;
+    font-style: normal;
+    font-weight: bold;
+}
+.gl__referee::before {
+    content: "\2014 \00A0"; /* em dash followed by a non-breaking space */
+}
+
+/* Single product description */
+.gl__woocommernce_description {
+    margin: 15px 0 15px 0;
+    border: 2px solid #8A29D5;
+    padding: 18px;
+    border-radius: 4px;
+}
+
+[class*=ct-container]>article {
+    padding-top: 0 !important;
+}
+
+.gl__home_header {
+    font-weight: 700;
+    font-size: 1.2em;
+    color: var(--theme-palette-color-1);
+}
+
+ul.products.columns-1 li {
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 65px;
+    margin-bottom: 5px;
+}
+ul.products.columns-1 li:last-child {
+    border-bottom: none;
+}
+
+.woocommerce-info[data-icon="gift"]::before {
+    content: "🎁" !important;
+    /* or background SVG, etc */
+}

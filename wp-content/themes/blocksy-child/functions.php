@@ -503,3 +503,192 @@ add_filter('woocommerce_checkout_fields', function ($fields) {
     }
     return $fields;
 });
+
+
+
+/**
+ * Custom shortcodes for product display
+ */
+
+/**
+ * [acf name="field_name" prefix="Before " suffix=" After" wrapper="h3" class="my-heading" id="123" format="text" fallback=""]
+ *
+ * - name:     ACF field name (required)
+ * - prefix:   String to prepend to the VALUE (optional)
+ * - suffix:   String to append to the VALUE (optional)
+ * - wrapper:  HTML tag to wrap around the output (optional, e.g. h3, div, span)
+ * - class:    Class name(s) to apply to the wrapper (optional)
+ * - id:       Post ID or "options". Defaults to current post.
+ * - format:   "text" (escaped) or "html" (keep ACF formatting)
+ * - fallback: Value to show if field is empty
+ */
+add_shortcode('gl_acf_display', function ($atts) {
+    $a = shortcode_atts([
+            'name'     => '',
+            'prefix'   => '',
+            'suffix'   => '',
+            'wrapper'  => '',
+            'class'    => '',
+            'id'       => '',
+            'format'   => 'text',
+            'fallback' => '',
+    ], $atts, 'acf');
+
+    if ($a['name'] === '' || !function_exists('get_field')) {
+        return $a['fallback'];
+    }
+
+    $post_id     = $a['id'] !== '' ? $a['id'] : get_the_ID();
+
+    $format_html = ($a['format'] === 'html');
+
+    $value = get_field($a['name'], $post_id, $format_html);
+
+
+    if ($value === null || $value === '' || $value === false) {
+        return $a['fallback'];
+    }
+
+    // Handle arrays (Image, Link, etc.)
+    if (is_array($value)) {
+        if (isset($value['url'], $value['title'])) {
+            $value = $format_html
+                    ? '<a href="' . esc_url($value['url']) . '">' . esc_html($value['title']) . '</a>'
+                    : $value['url'];
+        } elseif (isset($value['url'])) {
+            $alt   = $value['alt'] ?? '';
+            $value = $format_html
+                    ? '<img src="' . esc_url($value['url']) . '" alt="' . esc_attr($alt) . '">'
+                    : $value['url'];
+        } else {
+            $value = implode(', ', array_map('strval', $value));
+        }
+    }
+
+    $output = $a['prefix']
+            . ($format_html ? wp_kses_post((string) $value) : esc_html(wp_strip_all_tags((string) $value)))
+            . $a['suffix'];
+
+    // Apply wrapper if provided
+    if ($a['wrapper'] !== '') {
+        $tag   = tag_escape($a['wrapper']);
+        $class = $a['class'] !== '' ? ' class="' . esc_attr($a['class']) . '"' : '';
+        $output = "<{$tag}{$class}>{$output}</{$tag}>";
+    }
+
+    return $output;
+});
+
+
+// Get Woocommerce product description
+/**
+ * [product_description id="123"]
+ *
+ * - id: Product ID. If omitted, it uses the current product (on single product page).
+ */
+add_shortcode('product_description', function ($atts) {
+    $a = shortcode_atts([
+            'id' => '',
+    ], $atts, 'product_description');
+
+    $product = null;
+
+    if ($a['id'] !== '') {
+        $product = wc_get_product(absint($a['id']));
+    } else {
+        global $product;
+        if (!$product instanceof WC_Product) {
+            $qid = get_queried_object_id();
+            if ($qid) {
+                $product = wc_get_product($qid);
+            }
+        }
+    }
+
+    if (!$product instanceof WC_Product) {
+        return '';
+    }
+
+    return $product->get_description();
+});
+
+
+/**
+ * [product_short_description id="123"]
+ *
+ * - id: Product ID. If omitted, it uses the current product (on single product page).
+ */
+add_shortcode('product_short_description', function ($atts) {
+    $a = shortcode_atts([
+            'id' => '',
+    ], $atts, 'product_short_description');
+
+    $product = null;
+
+    if ($a['id'] !== '') {
+        $product = wc_get_product(absint($a['id']));
+    } else {
+        global $product;
+        if (!$product instanceof WC_Product) {
+            $qid = get_queried_object_id();
+            if ($qid) {
+                $product = wc_get_product($qid);
+            }
+        }
+    }
+
+    if (!$product instanceof WC_Product) {
+        return '';
+    }
+
+    return $product->get_short_description();
+});
+
+
+// Display only certain categories on shop page
+function custom_shop_page_categories($query) {
+    if (!is_admin() && is_shop() && $query->is_main_query()) {
+        $query->set('tax_query', array(
+            array(
+                'taxonomy' => 'product_cat',
+                'field'    => 'slug',
+                'terms'    => array(
+                   'community',
+                   'animals',
+                   'creativity-literacy',
+                   'education',
+                   'environment',
+                   'youth',
+                   'social-justice',
+                   'health-and-wellness',
+                ),
+                'operator' => 'IN',
+                'posts_per_page' => -1,
+                'orderby' => 'name',
+            ),
+        ));
+    }
+}
+add_action('pre_get_posts', 'custom_shop_page_categories');
+
+
+/**
+ * Add custom CSS to the admin footer.
+ * This function is hooked into the 'admin_footer' action.
+ * This hides Blocksy functionality for woo product videos
+ */
+function custom_admin_footer_css() {
+    // Only output the CSS for users who can manage options (admins)
+
+        ?>
+        <style>
+            [class*=acf-admin] #set-post-thumbnail ul.actions, .woocommerce-admin-page #set-post-thumbnail ul.actions {
+                display: none !important;
+                position: revert !important;
+            }
+        </style>
+        <?php
+
+}
+add_action('admin_footer', 'custom_admin_footer_css');
+
