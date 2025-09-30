@@ -5,7 +5,6 @@ if (! defined('WP_DEBUG')) {
 }
 
 
-
 function blocksy_child_scripts() {
     // Enqueue parent theme style first
     wp_enqueue_style(
@@ -22,6 +21,13 @@ function blocksy_child_scripts() {
     );
 }
 add_action('wp_enqueue_scripts', 'blocksy_child_scripts', 200);
+
+
+// Custom style for WordPress admin
+function custom_admin_styles() {
+    wp_enqueue_style( 'custom-admin-css', get_stylesheet_directory_uri() . '/admin-style.css' );
+}
+add_action( 'admin_enqueue_scripts', 'custom_admin_styles' );
 
 // Change add to cart text on single product page
 add_filter( 'woocommerce_product_single_add_to_cart_text', 'woocommerce_add_to_cart_button_text_single' );
@@ -670,25 +676,4 @@ function custom_shop_page_categories($query) {
     }
 }
 add_action('pre_get_posts', 'custom_shop_page_categories');
-
-
-/**
- * Add custom CSS to the admin footer.
- * This function is hooked into the 'admin_footer' action.
- * This hides Blocksy functionality for woo product videos
- */
-function custom_admin_footer_css() {
-    // Only output the CSS for users who can manage options (admins)
-
-        ?>
-        <style>
-            [class*=acf-admin] #set-post-thumbnail ul.actions, .woocommerce-admin-page #set-post-thumbnail ul.actions {
-                display: none !important;
-                position: revert !important;
-            }
-        </style>
-        <?php
-
-}
-add_action('admin_footer', 'custom_admin_footer_css');
 

@@ -1,0 +1,5 @@
+/* Hide video functionality for Woo product images*/
+[class*=acf-admin] #set-post-thumbnail ul.actions, .woocommerce-admin-page #set-post-thumbnail ul.actions {
+    display: none !important;
+    position: revert !important;
+}
