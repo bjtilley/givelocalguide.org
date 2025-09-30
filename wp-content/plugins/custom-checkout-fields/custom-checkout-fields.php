@@ -11,6 +11,9 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Include the new actions class
+require_once plugin_dir_path(__FILE__) . 'includes/class-donation-report-actions.php';
+
 class Custom_Checkout_Fields {
     /**
      * Constructor
@@ -39,6 +42,25 @@ class Custom_Checkout_Fields {
 
         // Add admin menu for donations report
         add_action('admin_menu', array($this, 'add_admin_menu'));
+
+        // Handle bulk actions from the report page
+        add_action('admin_init', array($this, 'handle_donation_report_actions'));
+    }
+
+    /**
+     * Handle bulk actions from the donations report page.
+     * Hooked into admin_init to ensure it runs before headers are sent.
+     */
+    public function handle_donation_report_actions() {
+        // Check if we are on the correct page and the form has been submitted.
+        if (
+            isset($_POST['action']) &&
+            $_POST['action'] !== '-1' &&
+            isset($_GET['page']) &&
+            $_GET['page'] === 'donations-report'
+        ) {
+            $this->process_bulk_action();
+        }
     }
 
     /**
@@ -60,109 +82,180 @@ class Custom_Checkout_Fields {
      * Render the donations report page
      */
     public function render_donations_report_page() {
-        // Check if our form has been submitted
-        if (isset($_POST['action']) && $_POST['action'] != '-1' && isset($_POST['donation_rows'])) {
-            $this->process_bulk_action();
+
+        // Get sorting parameters
+        $orderby = isset($_GET['orderby']) ? sanitize_key($_GET['orderby']) : 'order_id';
+        $order = isset($_GET['order']) && in_array(strtoupper($_GET['order']), ['ASC', 'DESC']) ? strtoupper($_GET['order']) : 'DESC';
+
+        // Get filter parameters
+        $email_sent_filter = isset($_GET['_email_sent_filter']) ? sanitize_text_field($_GET['_email_sent_filter']) : '';
+
+        // Prepare data array
+        $report_data = array();
+        $orders = wc_get_orders(array('numberposts' => -1));
+
+        if ($orders) {
+            foreach ($orders as $order_obj) {
+                $order_id = $order_obj->get_id();
+                $first_name = $order_obj->get_billing_first_name();
+                $last_name = $order_obj->get_billing_last_name();
+                $email = $order_obj->get_billing_email();
+                $anonymous = get_post_meta($order_id, '_anonymous_donation', true);
+                $anonymous_display = ($anonymous === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
+
+                foreach ($order_obj->get_items() as $item_id => $item) {
+                    $product_id = $item->get_product_id();
+
+                    if (has_term(array('free-product-gift', 'free-product-voucher'), 'product_cat', $product_id)) {
+                        continue;
+                    }
+
+                    $email_sent = wc_get_order_item_meta($item_id, '_email_sent', true) ?: 'no';
+
+                    // Filter by email sent status
+                    if ($email_sent_filter && $email_sent !== $email_sent_filter) {
+                        continue;
+                    }
+
+                    $email_sent_display = ($email_sent === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
+                    $row_class = ($email_sent !== 'yes') ? 'email-not-sent' : 'email-sent';
+
+                    $report_data[] = array(
+                        'order_id' => $order_id,
+                        'order_date' => $order_obj->get_date_created(),
+                        'first_name' => $first_name,
+                        'last_name' => $last_name,
+                        'email' => $email,
+                        'anonymous_display' => $anonymous_display,
+                        'email_sent_display' => $email_sent_display,
+                        'company_email' => function_exists('get_field') ? get_field('company_email', $product_id) : '',
+                        'product_name' => $item->get_name(),
+                        'product_amount' => $item->get_total(),
+                        'order_comments' => $order_obj->get_customer_note(),
+                        'item_id' => $item_id,
+                        'row_class' => $row_class,
+                    );
+                }
+            }
         }
+
+        // Sort the data
+        if (!empty($report_data)) {
+            usort($report_data, function($a, $b) use ($orderby, $order) {
+                $a_val = isset($a[$orderby]) ? $a[$orderby] : '';
+                $b_val = isset($b[$orderby]) ? $b[$orderby] : '';
+
+                if ($a_val == $b_val) {
+                    return 0;
+                }
+
+                if ($order === 'ASC') {
+                    return $a_val < $b_val ? -1 : 1;
+                } else {
+                    return $a_val > $b_val ? -1 : 1;
+                }
+            });
+        }
+
+        // Helper function to generate sortable table headers
+        $get_sortable_header = function($key, $label) use ($orderby, $order) {
+            $current_order = ($orderby === $key) ? $order : 'ASC';
+            $next_order = ($current_order === 'ASC') ? 'desc' : 'asc';
+            $url = add_query_arg(['orderby' => $key, 'order' => $next_order]);
+            $class = 'manage-column column-' . $key . ' sortable ' . strtolower($current_order);
+            if ($orderby === $key) {
+                $class .= ' sorted';
+            }
+            return '<th scope="col" class="' . esc_attr($class) . '"><a href="' . esc_url($url) . '"><span>' . esc_html($label) . '</span><span class="sorting-indicator"></span></a></th>';
+        };
+
         ?>
         <div class="wrap">
             <h1><?php echo esc_html__('Donations Report', 'custom-checkout-fields'); ?></h1>
+
+            <div class="tablenav top">
+                <div class="alignleft actions">
+                    <form method="get">
+                        <input type="hidden" name="page" value="<?php echo esc_attr($_REQUEST['page']); ?>" />
+                        <label for="filter-by-email-sent" class="screen-reader-text"><?php echo esc_html__('Filter by email sent status', 'custom-checkout-fields'); ?></label>
+                        <select name="_email_sent_filter" id="filter-by-email-sent">
+                            <option value=""><?php echo esc_html__('Show all statuses', 'custom-checkout-fields'); ?></option>
+                            <option value="yes" <?php selected($email_sent_filter, 'yes'); ?>><?php echo esc_html__('Email Sent: Yes', 'custom-checkout-fields'); ?></option>
+                            <option value="no" <?php selected($email_sent_filter, 'no'); ?>><?php echo esc_html__('Email Sent: No', 'custom-checkout-fields'); ?></option>
+                        </select>
+                        <input type="submit" name="filter_action" id="post-query-submit" class="button" value="<?php echo esc_attr__('Filter', 'custom-checkout-fields'); ?>">
+                    </form>
+                </div>
+            </div>
+
             <form method="post">
                 <div class="tablenav top">
                     <div class="alignleft actions bulkactions">
                         <label for="bulk-action-selector-top" class="screen-reader-text"><?php echo esc_html__('Select bulk action', 'custom-checkout-fields'); ?></label>
                         <select name="action" id="bulk-action-selector-top">
                             <option value="-1"><?php echo esc_html__('Bulk Actions', 'custom-checkout-fields'); ?></option>
-                            <option value="custom_action"><?php echo esc_html__('Custom Action', 'custom-checkout-fields'); ?></option>
+                            <option value="send_donation_emails"><?php echo esc_html__('Send Donation Emails', 'custom-checkout-fields'); ?></option>
                         </select>
                         <input type="submit" id="doaction" class="button action" value="<?php echo esc_attr__('Apply', 'custom-checkout-fields'); ?>">
                     </div>
                 </div>
-                <table class="widefat fixed" cellspacing="0">
+                <table class="widefat">
                     <thead>
                         <tr>
                             <td id="cb" class="manage-column column-cb check-column">
                                 <label class="screen-reader-text" for="cb-select-all-1"><?php echo esc_html__('Select All'); ?></label>
                                 <input id="cb-select-all-1" type="checkbox">
                             </td>
-                            <th class="manage-column column-order_id" scope="col"><?php echo esc_html__('Order ID', 'custom-checkout-fields'); ?></th>
-                            <th class="manage-column column-order_date" scope="col"><?php echo esc_html__('Order Date', 'custom-checkout-fields'); ?></th>
-                            <th class="manage-column column-first_name" scope="col"><?php echo esc_html__('First Name', 'custom-checkout-fields'); ?></th>
-                            <th class="manage-column column-last_name" scope="col"><?php echo esc_html__('Last Name', 'custom-checkout-fields'); ?></th>
-                            <th class="manage-column column-email" scope="col"><?php echo esc_html__('Email Address', 'custom-checkout-fields'); ?></th>
+                            <?php echo $get_sortable_header('order_id', __('Order ID', 'custom-checkout-fields')); ?>
+                            <?php echo $get_sortable_header('order_date', __('Order Date', 'custom-checkout-fields')); ?>
+                            <?php echo $get_sortable_header('first_name', __('First Name', 'custom-checkout-fields')); ?>
+                            <?php echo $get_sortable_header('last_name', __('Last Name', 'custom-checkout-fields')); ?>
+                            <?php echo $get_sortable_header('email', __('Email Address', 'custom-checkout-fields')); ?>
                             <th class="manage-column column-anonymous_donation" scope="col"><?php echo esc_html__('Anonymous Donation', 'custom-checkout-fields'); ?></th>
                             <th class="manage-column column-email_sent" scope="col"><?php echo esc_html__('Email Sent', 'custom-checkout-fields'); ?></th>
                             <th class="manage-column column-company_email" scope="col"><?php echo esc_html__('Company Email', 'custom-checkout-fields'); ?></th>
-                            <th class="manage-column column-product_name" scope="col"><?php echo esc_html__('Company Name', 'custom-checkout-fields'); ?></th>
-                            <th class="manage-column column-product_amount" scope="col"><?php echo esc_html__('Product Amount', 'custom-checkout-fields'); ?></th>
+                            <?php echo $get_sortable_header('product_name', __('Company Name', 'custom-checkout-fields')); ?>
+                            <?php echo $get_sortable_header('product_amount', __('Product Amount', 'custom-checkout-fields')); ?>
                             <th class="manage-column column-order_comments" scope="col"><?php echo esc_html__('Order Comments', 'custom-checkout-fields'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php
-                        $orders = wc_get_orders(array('numberposts' => -1));
-                        $has_donations = false;
-                        if ($orders) {
-                            foreach ($orders as $order) {
-                                $order_id = $order->get_id();
-                                $first_name = $order->get_billing_first_name();
-                                $last_name = $order->get_billing_last_name();
-                                $email = $order->get_billing_email();
-                                $anonymous = get_post_meta($order_id, '_anonymous_donation', true);
-                                $anonymous_display = ($anonymous === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
-                                $email_sent = get_post_meta($order_id, '_email_sent', true);
-                                $email_sent_display = ($email_sent === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
-                                $row_class = ($email_sent !== 'yes') ? 'email-not-sent' : '';
-
-                                foreach ($order->get_items() as $item_id => $item) {
-                                    $product_id = $item->get_product_id();
-
-                                    // Exclude products from specific categories
-                                    if (has_term(array('free-product-gift', 'free-product-voucher'), 'product_cat', $product_id)) {
-                                        continue;
-                                    }
-
-                                    $has_donations = true;
-                                    $company_email = function_exists('get_field') ? get_field('company_email', $product_id) : '';
-                                    $product_name = $item->get_name();
-                                    $order_date_obj = $order->get_date_created();
-                                    if ($order_date_obj) {
-                                        $order_date_obj->setTimezone(new DateTimeZone('America/New_York'));
-                                        $order_date = $order_date_obj->format('m/d/y h:i A');
-                                    } else {
-                                        $order_date = '';
-                                    }
-                                    $product_amount = $item->get_total();
-                                    $order_comments = $order->get_customer_note();
-                                    ?>
-                                    <tr class="<?php echo esc_attr($row_class); ?>">
-                                        <th scope="row" class="check-column">
-                                            <label class="screen-reader-text" for="cb-select-<?php echo esc_attr($item_id); ?>"><?php echo sprintf(esc_html__('Select donation from order %s'), esc_html($order_id)); ?></label>
-                                            <input id="cb-select-<?php echo esc_attr($item_id); ?>" type="checkbox" name="donation_rows[]" value="<?php echo esc_attr($order_id . '|' . $item_id); ?>">
-                                        </th>
-                                        <td class="column-order_id"><?php echo esc_html($order_id); ?></td>
-                                        <td class="column-order_date"><?php echo esc_html($order_date); ?></td>
-                                        <td class="column-first_name"><?php echo esc_html($first_name); ?></td>
-                                        <td class="column-last_name"><?php echo esc_html($last_name); ?></td>
-                                        <td class="column-email"><?php echo esc_html($email); ?></td>
-                                        <td class="column-anonymous_donation"><?php echo esc_html($anonymous_display); ?></td>
-                                        <td class="column-email_sent"><?php echo esc_html($email_sent_display); ?></td>
-                                        <td class="column-company_email"><?php echo esc_html($company_email); ?></td>
-                                        <td class="column-product_name"><?php echo esc_html($product_name); ?></td>
-                                        <td class="column-product_amount"><?php echo wp_kses_post(wc_price($product_amount)); ?></td>
-                                        <td class="column-order_comments"><?php echo esc_html($order_comments); ?></td>
-                                    </tr>
-                                    <?php
+                        if (!empty($report_data)) {
+                            foreach ($report_data as $row) {
+                                $order_date_obj = $row['order_date'];
+                                if ($order_date_obj) {
+                                    $order_date_obj->setTimezone(new DateTimeZone('America/New_York'));
+                                    $order_date = $order_date_obj->format('m/d/y h:i A');
+                                } else {
+                                    $order_date = '';
                                 }
+                                ?>
+                                <tr class="<?php echo esc_attr($row['row_class']); ?>">
+                                    <th scope="row" class="check-column">
+                                        <label class="screen-reader-text" for="cb-select-<?php echo esc_attr($row['item_id']); ?>"><?php echo sprintf(esc_html__('Select donation from order %s'), esc_html($row['order_id'])); ?></label>
+                                        <input id="cb-select-<?php echo esc_attr($row['item_id']); ?>" type="checkbox" name="donation_rows[]" value="<?php echo esc_attr($row['order_id'] . '|' . $row['item_id']); ?>">
+                                    </th>
+                                    <td class="column-order_id"><?php echo esc_html($row['order_id']); ?></td>
+                                    <td class="column-order_date"><?php echo esc_html($order_date); ?></td>
+                                    <td class="column-first_name"><?php echo esc_html($row['first_name']); ?></td>
+                                    <td class="column-last_name"><?php echo esc_html($row['last_name']); ?></td>
+                                    <td class="column-email"><?php echo esc_html($row['email']); ?></td>
+                                    <td class="column-anonymous_donation"><?php echo esc_html($row['anonymous_display']); ?></td>
+                                    <td class="column-email_sent"><?php echo esc_html($row['email_sent_display']); ?></td>
+                                    <td class="column-company_email"><?php echo esc_html($row['company_email']); ?></td>
+                                    <td class="column-product_name"><?php echo esc_html($row['product_name']); ?></td>
+                                    <td class="column-product_amount"><?php echo wp_kses_post(wc_price($row['product_amount'])); ?></td>
+                                    <td class="column-order_comments"><?php echo esc_html($row['order_comments']); ?></td>
+                                </tr>
+                                <?php
                             }
-                        }
-
-                        if (!$has_donations) {
-                            ?>
-                            <tr class="no-items">
-                                <td class="colspanchange" colspan="12"><?php echo esc_html__('No donations found.', 'custom-checkout-fields'); ?></td>
-                            </tr>
-                            <?php
+                        } else {
+                        ?>
+                        <tr class="no-items">
+                            <td class="colspanchange" colspan="12"><?php echo esc_html__('No donations found.', 'custom-checkout-fields'); ?></td>
+                        </tr>
+                        <?php
                         }
                         ?>
                     </tbody>
@@ -172,6 +265,9 @@ class Custom_Checkout_Fields {
         <style type="text/css">
             .widefat .email-not-sent {
                 background-color: #EDC3BE;
+            }
+            .widefat .email-sent {
+                background-color: #C6F5C9;
             }
             .widefat tbody tr td, .widefat tbody tr th {
                 border-bottom: 1px solid #ddd;
@@ -199,24 +295,29 @@ class Custom_Checkout_Fields {
         $action = isset($_POST['action']) ? sanitize_text_field($_POST['action']) : false;
         $selected_rows = isset($_POST['donation_rows']) ? (array) $_POST['donation_rows'] : array();
 
-        if ($action === 'custom_action' && !empty($selected_rows)) {
-            foreach ($selected_rows as $row) {
-                // The value is in 'order_id|item_id' format
-                list($order_id, $item_id) = explode('|', $row);
-                $order_id = intval($order_id);
-                $item_id = intval($item_id);
+        if (empty($selected_rows) || !$action || $action === '-1') {
+            return;
+        }
 
-                if ($order_id && $item_id) {
-                    // Your custom action logic will go here.
-                    // For example, you can get the order and the item:
-                    // $order = wc_get_order($order_id);
-                    // $item = $order->get_item($item_id);
-                }
-            }
+        // Instantiate your new actions handler
+        $actions_handler = new Donation_Report_Actions();
 
-            // Optional: Add an admin notice to show success
-            add_action('admin_notices', function() {
-                echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('The custom bulk action has been performed on the selected rows.', 'custom-checkout-fields') . '</p></div>';
+        // Get just the item IDs from the 'order_id|item_id' values
+        $item_ids = array_map(function($row) {
+            $parts = explode('|', $row);
+            return isset($parts[1]) ? intval($parts[1]) : 0;
+        }, $selected_rows);
+
+        // Filter out any invalid item IDs
+        $item_ids = array_filter($item_ids);
+
+        // Perform action based on the selected value
+        if ($action === 'send_donation_emails') { // Let's say you name your action 'mark_sent'
+            $updated_count = $actions_handler->mark_email_as_sent($item_ids);
+
+            // Show a confirmation notice
+            add_action('admin_notices', function() use ($updated_count) {
+                echo '<div class="notice notice-success is-dismissible"><p>' . sprintf(esc_html__('%d donation emails sent.', 'custom-checkout-fields'), $updated_count) . '</p></div>';
             });
         }
     }

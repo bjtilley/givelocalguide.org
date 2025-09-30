@@ -105,5 +105,7 @@ ul.products.columns-1 li:last-child {
 
 .woocommerce-info[data-icon="gift"]::before {
     content: "🎁" !important;
-    /* or background SVG, etc */
 }
+
+
+
