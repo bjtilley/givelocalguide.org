@@ -54,10 +54,18 @@ class Donation_Report_Actions {
         }
         
         // Get email body
-        $email_template = new Email_Template();
         // Email fields
         $email_fields = $this->get_email_fields($item_id, $order_id);
-        $email_body = $email_template->render('donation-email-template', $email_fields);
+        if(empty($email_fields) || empty($email_fields['company_email'])) {
+            return false;
+        }
+        if($email_fields['anonymous_status'] === 'Yes') {
+            $email_template_name = 'anonymous-donation-email-template';
+        } else{
+            $email_template_name = 'donation-email-template';
+        }
+        $email_template = new Email_Template();
+        $email_body = $email_template->render($email_template_name, $email_fields);
         
         $post_data = [
             'key' => $this->mandrill_api_key,
@@ -68,7 +76,7 @@ class Donation_Report_Actions {
                 'from_name' => 'GiveLocal Guide',
                 'to' =>[
                     [
-                        'email' => 'bjtilley+companytest@gmail.com',
+                        'email' => $email_fields['company_email'],
                         'type' => 'to',
                     ]
                 ]
@@ -107,6 +115,7 @@ class Donation_Report_Actions {
         $fields = [];
         // Gets the order object. Caches the result.
         $order = wc_get_order($order_id);
+        
         if (!$order) {
             return [];
         }
@@ -129,41 +138,36 @@ class Donation_Report_Actions {
         if (!$item) {
             return [];
         }
-        
+        $fields['nonprofit_name'] = $item->get_name();
         $fields['amount_received'] = $item->get_total();
         
-        // Get the product ID from the item.
+        
+        
+        // --- Product Fields ---
         $product_id = $item->get_product_id();
-        
-        $fields['nonprofit_name'] = $item->get_name();
-        
-        // Get all item meta in one go.
-        /*
-        $all_meta = get_metadata('order_item', $item_id);
-        $meta_array = [];
-        foreach ($all_meta as $key => $value) {
-            // get_metadata returns an array of values for each key, we usually want the first one.
-            $meta_array[$key] = $value[0] ?? null;
+        if ($product_id && function_exists('get_fields')) {
+            $product_fields = get_fields($product_id);
+            if (is_array($product_fields) && !empty($product_fields['company_email'])) {
+                $fields['company_email'] = $product_fields['company_email'];
+            }
         }
-        */
+        
+        // Anonymous status for order item
+        $anonymous = get_post_meta($order_id, '_anonymous_donation', true);
+        $fields['anonymous_status'] = $this->get_anonymous_status($anonymous, $fields['order_comments']);
         
         return $fields;
     }
     
     
-    
-    public function get_email_fields_test($item_id, $order_id) {
-        $order = wc_get_order($order_id);
-        echo '<pre>';
-        print_r($order); exit;
-        $all_meta = get_metadata('order_item', $item_id);
+    public function get_anonymous_status($anonymous_field, $comments) {
         
-        $fields = [];
-        $fields['donor_name'] = wc_get_order_item_meta($item_id, '_donor_name', true);
-        $fields['donor_email'] = wc_get_order_item_meta($item_id, '_donor_email', true);
-        $fields['donation_amount'] = wc_get_order_item_meta($item_id, '_donation_amount', true);
-        $fields['nonprofit_name'] = wc_get_order_item_meta($item_id, '_nonprofit_name', true);
-        return $fields;
+        $anonymous_keyword_exists = stripos($comments, 'anonymous') !== false;
+        if( $anonymous_field == 'yes' || $anonymous_keyword_exists ) {
+            return 'Yes';
+        } else {
+            return 'No';
+        }
     }
     
 
@@ -177,4 +181,3 @@ class Donation_Report_Actions {
         // Logic for exporting to CSV would go here.
     }
 }
-
