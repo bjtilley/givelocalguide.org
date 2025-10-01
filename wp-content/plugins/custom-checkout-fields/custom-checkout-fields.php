@@ -323,8 +323,8 @@ class Custom_Checkout_Fields {
             $updated_count = $actions_handler->mark_email_as_sent($order_items);
 
             // Show a confirmation notice
-            add_action('admin_notices', function() use ($updated_count) {
-                echo '<div class="notice notice-success is-dismissible"><p>' . sprintf(esc_html__('%d donation emails sent.', 'custom-checkout-fields'), $updated_count) . '</p></div>';
+            add_action('admin_notices', function() use ($donation_item_rows, $updated_count) {
+                echo '<div class="notice notice-success is-dismissible"><p>' . sprintf(esc_html__('%d donation emails out of %d sent.', 'custom-checkout-fields'), $updated_count, count($donation_item_rows)) . '</p></div>';
             });
         }
     }
