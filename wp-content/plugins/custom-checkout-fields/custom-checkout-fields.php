@@ -3,7 +3,7 @@
  * Plugin Name: Custom Checkout Fields
  * Description: Adds custom fields to the WooCommerce checkout process
  * Version: 1.0
- * Author: Custom Development
+ * Author: Brandon Tilley
  * Text Domain: custom-checkout-fields
  */
 
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Include the new actions class
-require_once plugin_dir_path(__FILE__) . 'includes/class-donation-report-actions.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-loader.php';
 
 class Custom_Checkout_Fields {
     /**
@@ -293,27 +293,34 @@ class Custom_Checkout_Fields {
         }
 
         $action = isset($_POST['action']) ? sanitize_text_field($_POST['action']) : false;
-        $selected_rows = isset($_POST['donation_rows']) ? (array) $_POST['donation_rows'] : array();
+        // $_POST['donation_rows'] formatted as array of strings "order_id|item_id"
+        $donation_item_rows = isset($_POST['donation_rows']) ? (array) $_POST['donation_rows'] : array();
 
-        if (empty($selected_rows) || !$action || $action === '-1') {
+        if (empty($donation_item_rows) || !$action || $action === '-1') {
             return;
         }
 
         // Instantiate your new actions handler
         $actions_handler = new Donation_Report_Actions();
 
-        // Get just the item IDs from the 'order_id|item_id' values
-        $item_ids = array_map(function($row) {
+        // Format $order_items as an array of arrays item_id  => order_id
+        $order_items = [];
+        foreach ($donation_item_rows as $row) {
             $parts = explode('|', $row);
-            return isset($parts[1]) ? intval($parts[1]) : 0;
-        }, $selected_rows);
+            if (isset($parts[0]) && isset($parts[1])) {
+                $item_id = intval($parts[1]);
+                $order_id = intval($parts[0]);
+                $order_items[$item_id] = $order_id;
+            }
+        }
 
-        // Filter out any invalid item IDs
-        $item_ids = array_filter($item_ids);
+        if (empty($order_items)) {
+            return;
+        }
 
         // Perform action based on the selected value
-        if ($action === 'send_donation_emails') { // Let's say you name your action 'mark_sent'
-            $updated_count = $actions_handler->mark_email_as_sent($item_ids);
+        if ($action === 'send_donation_emails') {
+            $updated_count = $actions_handler->mark_email_as_sent($order_items);
 
             // Show a confirmation notice
             add_action('admin_notices', function() use ($updated_count) {

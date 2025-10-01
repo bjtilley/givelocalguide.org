@@ -1,0 +1,157 @@
+<!-- templates/emails/donation-email-template.html -->
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Give!Local Guide New Donation</title>
+    <style type="text/css">
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+            -webkit-text-size-adjust: none !important;
+            width: 100% !important;
+        }
+        table {
+            border-spacing: 0;
+            border-collapse: collapse;
+        }
+        img {
+            border: none;
+            display: block;
+            outline: none;
+            text-decoration: none;
+            max-width: 100%;
+            height: auto;
+        }
+        .container {
+            width: 100%;
+            padding: 40px 0;
+            background-color: #ffffff;
+        }
+        .main-table {
+            width: 100%;
+            background-color: #ffffff;
+        }
+        .content-table {
+            width: 600px;
+            margin: 0 auto;
+            background-color: #fdfdfd;
+            border: 1px solid #e5e5e5;
+            border-radius: 3px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            background-color: #c6a4c1;
+            border-radius: 3px 3px 0 0;
+            color: #202020;
+            font-weight: bold;
+            font-family: 'Helvetica Neue', Helvetica, Roboto, Arial, sans-serif;
+            padding: 36px 48px;
+            text-align: left;
+            text-shadow: 0 1px 0 #d1b6cd;
+            -webkit-font-smoothing: antialiased;
+        }
+        .body-content {
+            background-color: #fdfdfd;
+            padding: 48px;
+            color: #737373;
+            font-family: 'Helvetica Neue', Helvetica, Roboto, Arial, sans-serif;
+            font-size: 14px;
+            line-height: 150%;
+            text-align: left;
+        }
+        .footer {
+            color: #ddc8da;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            line-height: 125%;
+            text-align: center;
+            padding: 0 48px 48px 48px;
+            border-radius: 0 0 6px 6px;
+        }
+        @media only screen and (max-width: 620px) {
+            .content-table, .content-table td, .content-table th {
+                width: 100% !important;
+                box-sizing: border-box;
+            }
+            .body-content {
+                padding: 20px !important;
+            }
+            .header {
+                padding: 24px 16px !important;
+            }
+            .footer {
+                padding: 0 16px 24px 16px !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <table class="main-table" width="100%" cellpadding="0" cellspacing="0" role="presentation">
+            <tr>
+                <td align="center">
+                    <!-- Header Image -->
+                    <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom: 20px;">
+                        <tr>
+                            <td align="center">
+                                <img src="https://givelocalguide.org/wp-content/themes/devdmbootstrap3/img/logoPink-email.png" alt="Give!Local Guide" style="font-size: 14px; font-weight: bold; text-transform: capitalize;">
+                            </td>
+                        </tr>
+                    </table>
+                    <!-- Sponsor Message -->
+                    <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom: 20px;">
+                        <tr>
+                            <td align="left" valign="top" style="padding-bottom: 15px;">
+                                <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                                    <tr>
+                                        <td valign="top" width="60">
+                                            <img src="https://givelocalguide.org/wp-content/themes/devdmbootstrap3/img/first_bank_logo_xs.png" height="50" alt="First Bank">
+                                        </td>
+                                        <td valign="top" style="padding-left: 15px;">
+                                            <h2 style="color:#202020;font-family:Helvetica,Roboto,Arial,sans-serif;font-size:15px;font-weight:300;line-height:130%;margin:0;text-align:left;">100 percent of your donation goes to the nonprofits you selected, thanks to First Bank generously sponsoring the payment of credit card transaction and processing fees. Find out more at <a href="https://www.localfirstbank.com" style="color:#202020;">www.localfirstbank.com</a>. Every penny counts!</h2>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                    <!-- Main Content -->
+                    <table class="content-table" cellpadding="0" cellspacing="0" role="presentation">
+                        <tr>
+                            <td class="header">
+                                <h1 style="margin: 0; font-size: 30px; font-weight: 300; line-height: 150%;">New Donation Received!</h1>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="body-content">
+                                <p style="margin: 0 0 16px;"><strong>{{ nonprofit_name }}</strong> has received a new Give!Local donation!</p>
+                                <h2 style="color: #c6a4c1; font-size: 18px; font-weight: bold; line-height: 130%; margin: 16px 0 8px;">Donation Details</h2>
+                                <p style="margin: 0 0 16px;">From: <strong>{{ billing_first_name }} {{ billing_last_name }}</strong></p>
+                                <p style="margin: 0 0 16px;">Date: <strong>{{ order_date }}</strong></p>
+                                <p style="margin: 0 0 16px;">Ref #: <strong>{{ order_id }}</strong></p>
+                                <p style="margin: 0 0 16px;">Amount: <strong>${{ amount_received }}</strong></p>
+                                <p style="margin: 0 0 16px;">Comments: <strong>{{ order_comments }}</strong></p>
+                                <br>
+                                <p style="margin: 0 0 16px;"><strong>Contact Info:</strong></p>
+                                <p style="margin: 0 0 16px;">Email: <strong><a href="mailto:{{ customer_email }}">{{ customer_email }}</a></strong></p>
+                                <p style="margin: 0 0 16px;">Phone: <strong>{{ customer_phone }}</strong></p>
+                                <p style="margin: 0 0 16px;">Address:</p>
+                                <p style="margin: 0 0 16px;"><strong>{{ customer_address }}</strong></p>
+                                <p style="margin: 0 0 16px;"><strong>{{ customer_city }}, {{ customer_state }} {{ customer_zip }}</strong></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="footer">
+                                <p>Give!Local Guide &middot; Mountain Xpress &middot; Asheville, NC</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>
