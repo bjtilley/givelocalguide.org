@@ -203,8 +203,8 @@ class Custom_Checkout_Fields {
                     <thead>
                         <tr>
                             <td id="cb" class="manage-column column-cb check-column">
-                                <label class="screen-reader-text" for="cb-select-all-1"><?php echo esc_html__('Select All'); ?></label>
-                                <input id="cb-select-all-1" type="checkbox">
+                                <label class="screen-reader-text" for="donation-report-select-all-1"><?php echo esc_html__('Select All'); ?></label>
+                                <input id="donation-report-select-all-1" type="checkbox">
                             </td>
                             <?php echo $get_sortable_header('order_id', __('Order ID', 'custom-checkout-fields')); ?>
                             <?php echo $get_sortable_header('order_date', __('Order Date', 'custom-checkout-fields')); ?>
@@ -234,7 +234,7 @@ class Custom_Checkout_Fields {
                                 <tr class="<?php echo esc_attr($row['row_class']); ?>">
                                     <th scope="row" class="check-column">
                                         <label class="screen-reader-text" for="cb-select-<?php echo esc_attr($row['item_id']); ?>"><?php echo sprintf(esc_html__('Select donation from order %s'), esc_html($row['order_id'])); ?></label>
-                                        <input id="cb-select-<?php echo esc_attr($row['item_id']); ?>" type="checkbox" name="donation_rows[]" value="<?php echo esc_attr($row['order_id'] . '|' . $row['item_id']); ?>">
+                                        <input id="cb-select-<?php echo esc_attr($row['item_id']); ?>" type="checkbox" name="donation_rows[]" value="<?php echo esc_attr($row['order_id'] . '|' . $row['item_id']); ?>" data-email-status="<?php echo $row['row_class'] === 'email-not-sent' ? 'no' : 'yes'; ?>">
                                     </th>
                                     <td class="column-order_id"><?php echo esc_html($row['order_id']); ?></td>
                                     <td class="column-order_date"><?php echo esc_html($order_date); ?></td>
@@ -274,11 +274,116 @@ class Custom_Checkout_Fields {
             }
         </style>
         <script type="text/javascript">
-            jQuery(document).ready(function($) {
-                $('#cb-select-all-1').on('click', function() {
-                    $('input[name="donation_rows[]"]').prop('checked', this.checked);
-                });
-            });
+// Donations Report selection limiting script
+// Ensures that clicking the "Select All" checkbox only selects up to MAX_SELECTIONS
+// checkboxes whose data-email-status="no". It also prevents WordPress core list-table
+// behavior from mass-selecting all checkboxes.
+document.addEventListener('DOMContentLoaded', function() {
+    const MAX_SELECTIONS = 40;
+    const selectAllCheckbox = document.getElementById('donation-report-select-all-1');
+    if (!selectAllCheckbox) return; // Safety guard
+
+    const allCheckboxes = Array.from(document.querySelectorAll('input[name="donation_rows[]"]'));
+    const notSentCheckboxes = allCheckboxes.filter(cb => cb.getAttribute('data-email-status') === 'no');
+
+    function countChecked() {
+        return allCheckboxes.reduce((acc, cb) => acc + (cb.checked ? 1 : 0), 0);
+    }
+
+    function countCheckedNotSent() {
+        return notSentCheckboxes.reduce((acc, cb) => acc + (cb.checked ? 1 : 0), 0);
+    }
+
+    function updateUI() {
+        const totalChecked = countChecked();
+        const checkedNotSentCount = countCheckedNotSent();
+        const maxSelectableNotSent = Math.min(notSentCheckboxes.length, MAX_SELECTIONS);
+
+        // Display / update selection count badge
+        let countDisplay = document.querySelector('.selection-count');
+        if (totalChecked > 0) {
+            if (!countDisplay) {
+                countDisplay = document.createElement('span');
+                countDisplay.className = 'selection-count';
+                countDisplay.style.marginLeft = '15px';
+                countDisplay.style.fontWeight = 'bold';
+                countDisplay.style.color = '#0073aa';
+                const bulkContainer = document.querySelector('.tablenav.top .alignleft.actions.bulkactions');
+                if (bulkContainer) bulkContainer.appendChild(countDisplay);
+            }
+            countDisplay.textContent = `${totalChecked} of max ${MAX_SELECTIONS} rows selected`;
+        } else if (countDisplay) {
+            countDisplay.remove();
+        }
+
+        // Reflect state in the header checkbox (based only on not-sent ones)
+        if (checkedNotSentCount === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        } else if (checkedNotSentCount >= maxSelectableNotSent) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
+        }
+    }
+
+    function applySelectAll() {
+        // Clear all selections first to ensure deterministic result
+        allCheckboxes.forEach(cb => { cb.checked = false; });
+        // Then select up to the maximum allowed from the not-sent pool
+        notSentCheckboxes.slice(0, MAX_SELECTIONS).forEach(cb => { cb.checked = true; });
+    }
+
+    function clearNotSentSelections() {
+        notSentCheckboxes.forEach(cb => { cb.checked = false; });
+    }
+
+    function handleSelectAllClick(event) {
+        // Prevent default checkbox toggle and stop WP core list-table propagation
+        event.preventDefault();
+        event.stopPropagation();
+
+        const currentlyCheckedNotSent = countCheckedNotSent();
+        const maxSelectableNotSent = Math.min(notSentCheckboxes.length, MAX_SELECTIONS);
+
+        // Toggle behavior: if we already have the maximum not-sent selected, clear them; else (re)select.
+        if (currentlyCheckedNotSent >= maxSelectableNotSent) {
+            clearNotSentSelections();
+        } else {
+            applySelectAll();
+        }
+
+        updateUI();
+    }
+
+    function handleIndividualCheckboxClick(event) {
+        const cb = event.target;
+        if (!(cb && cb.type === 'checkbox')) return;
+
+        if (cb.checked) {
+            const totalChecked = countChecked();
+            if (totalChecked > MAX_SELECTIONS) {
+                // Revert
+                cb.checked = false;
+                alert('You cannot select more than ' + MAX_SELECTIONS + ' rows at once.');
+            }
+        }
+        updateUI();
+    }
+
+    // Attach handlers
+    selectAllCheckbox.addEventListener('click', handleSelectAllClick, true); // capture to beat core handler
+
+    allCheckboxes.forEach(cb => {
+        cb.addEventListener('click', handleIndividualCheckboxClick);
+        cb.addEventListener('change', handleIndividualCheckboxClick);
+    });
+
+    // Initial state
+    updateUI();
+});
         </script>
         <?php
     }
