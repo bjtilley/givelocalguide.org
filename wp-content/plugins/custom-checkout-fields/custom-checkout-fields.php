@@ -286,20 +286,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const allCheckboxes = Array.from(document.querySelectorAll('input[name="donation_rows[]"]'));
     const notSentCheckboxes = allCheckboxes.filter(cb => cb.getAttribute('data-email-status') === 'no');
 
-    function countChecked() {
-        return allCheckboxes.reduce((acc, cb) => acc + (cb.checked ? 1 : 0), 0);
-    }
-
-    function countCheckedNotSent() {
-        return notSentCheckboxes.reduce((acc, cb) => acc + (cb.checked ? 1 : 0), 0);
-    }
+    function countChecked() { return allCheckboxes.reduce((acc, cb) => acc + (cb.checked ? 1 : 0), 0); }
+    function countCheckedNotSent() { return notSentCheckboxes.reduce((acc, cb) => acc + (cb.checked ? 1 : 0), 0); }
 
     function updateUI() {
         const totalChecked = countChecked();
         const checkedNotSentCount = countCheckedNotSent();
         const maxSelectableNotSent = Math.min(notSentCheckboxes.length, MAX_SELECTIONS);
-
-        // Display / update selection count badge
         let countDisplay = document.querySelector('.selection-count');
         if (totalChecked > 0) {
             if (!countDisplay) {
@@ -315,8 +308,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (countDisplay) {
             countDisplay.remove();
         }
-
-        // Reflect state in the header checkbox (based only on not-sent ones)
         if (checkedNotSentCount === 0) {
             selectAllCheckbox.checked = false;
             selectAllCheckbox.indeterminate = false;
@@ -330,42 +321,29 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function applySelectAll() {
-        // Clear all selections first to ensure deterministic result
         allCheckboxes.forEach(cb => { cb.checked = false; });
-        // Then select up to the maximum allowed from the not-sent pool
         notSentCheckboxes.slice(0, MAX_SELECTIONS).forEach(cb => { cb.checked = true; });
     }
 
-    function clearNotSentSelections() {
-        notSentCheckboxes.forEach(cb => { cb.checked = false; });
-    }
+    function clearNotSentSelections() { notSentCheckboxes.forEach(cb => { cb.checked = false; }); }
 
     function handleSelectAllClick(event) {
-        // Prevent default checkbox toggle and stop WP core list-table propagation
-        event.preventDefault();
+        // Allow native toggle (no preventDefault), but stop propagation to block WP core mass-select.
         event.stopPropagation();
-
-        const currentlyCheckedNotSent = countCheckedNotSent();
-        const maxSelectableNotSent = Math.min(notSentCheckboxes.length, MAX_SELECTIONS);
-
-        // Toggle behavior: if we already have the maximum not-sent selected, clear them; else (re)select.
-        if (currentlyCheckedNotSent >= maxSelectableNotSent) {
-            clearNotSentSelections();
-        } else {
+        if (event.target.checked) {
             applySelectAll();
+        } else {
+            clearNotSentSelections();
         }
-
         updateUI();
     }
 
     function handleIndividualCheckboxClick(event) {
         const cb = event.target;
         if (!(cb && cb.type === 'checkbox')) return;
-
         if (cb.checked) {
             const totalChecked = countChecked();
             if (totalChecked > MAX_SELECTIONS) {
-                // Revert
                 cb.checked = false;
                 alert('You cannot select more than ' + MAX_SELECTIONS + ' rows at once.');
             }
@@ -373,15 +351,8 @@ document.addEventListener('DOMContentLoaded', function() {
         updateUI();
     }
 
-    // Attach handlers
-    selectAllCheckbox.addEventListener('click', handleSelectAllClick, true); // capture to beat core handler
-
-    allCheckboxes.forEach(cb => {
-        cb.addEventListener('click', handleIndividualCheckboxClick);
-        cb.addEventListener('change', handleIndividualCheckboxClick);
-    });
-
-    // Initial state
+    selectAllCheckbox.addEventListener('click', handleSelectAllClick, true);
+    allCheckboxes.forEach(cb => { cb.addEventListener('click', handleIndividualCheckboxClick); cb.addEventListener('change', handleIndividualCheckboxClick); });
     updateUI();
 });
         </script>
