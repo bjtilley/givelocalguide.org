@@ -10,6 +10,74 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Add admin settings page
+function fvg_add_admin_settings_page() {
+    add_options_page(
+        __('Free Voucher Settings', 'free-voucher-gift'),
+        __('Free Voucher Settings', 'free-voucher-gift'),
+        'manage_options',
+        'free-voucher-settings',
+        'fvg_render_settings_page'
+    );
+}
+add_action('admin_menu', 'fvg_add_admin_settings_page');
+
+// Render the settings page
+function fvg_render_settings_page() {
+    // Handle form submission
+    if (isset($_POST['submit']) && wp_verify_nonce($_POST['fvg_settings_nonce'], 'fvg_save_settings')) {
+        $enabled = isset($_POST['fvg_enabled']) ? 1 : 0;
+        update_option('fvg_plugin_enabled', $enabled);
+        echo '<div class="notice notice-success"><p>' . __('Settings saved successfully.', 'free-voucher-gift') . '</p></div>';
+    }
+
+    $enabled = get_option('fvg_plugin_enabled', 1); // Default to enabled
+    ?>
+    <div class="wrap">
+        <h1><?php echo esc_html__('Free Voucher Gift Settings', 'free-voucher-gift'); ?></h1>
+
+        <form method="post" action="">
+            <?php wp_nonce_field('fvg_save_settings', 'fvg_settings_nonce'); ?>
+
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <label for="fvg_enabled"><?php echo esc_html__('Enable Free Voucher Gifts', 'free-voucher-gift'); ?></label>
+                    </th>
+                    <td>
+                        <input type="checkbox" id="fvg_enabled" name="fvg_enabled" value="1" <?php checked($enabled, 1); ?> />
+                        <p class="description">
+                            <?php echo esc_html__('When enabled, free voucher products will be automatically added to the cart when the total subtotal meets the threshold requirements.', 'free-voucher-gift'); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+
+            <?php submit_button(); ?>
+        </form>
+
+        <hr>
+
+        <h2><?php echo esc_html__('How It Works', 'free-voucher-gift'); ?></h2>
+        <p><?php echo esc_html__('This plugin automatically adds free voucher products to the cart when the total cart subtotal (excluding free gifts and vouchers) meets or exceeds the threshold set for each voucher product.', 'free-voucher-gift'); ?></p>
+
+        <h3><?php echo esc_html__('Configuration', 'free-voucher-gift'); ?></h3>
+        <ol>
+            <li><?php echo esc_html__('Create products and assign them to the "Free Product Voucher" category', 'free-voucher-gift'); ?></li>
+            <li><?php echo esc_html__('Set the "Free Voucher Threshold" field for each voucher product using ACF', 'free-voucher-gift'); ?></li>
+            <li><?php echo esc_html__('When customers add products to their cart totaling the threshold amount, the voucher will be automatically added', 'free-voucher-gift'); ?></li>
+        </ol>
+    </div>
+    <?php
+}
+
+// Helper function to check if plugin is enabled
+if (!function_exists('fvg_is_plugin_enabled')) {
+    function fvg_is_plugin_enabled() {
+        return get_option('fvg_plugin_enabled', 1) == 1;
+    }
+}
+
 // Helper: safe retrieval of a cart item's line subtotal even early in lifecycle
 if (!function_exists('fvg_get_line_subtotal')) {
     function fvg_get_line_subtotal($cart_item) {
@@ -55,7 +123,7 @@ add_action('init', 'fvg_register_voucher_category');
 
 // Ensure vouchers are actually free and maintain correct subtotals
 function fvg_adjust_voucher_price($cart) {
-    if (!WC()->cart) {
+    if (!WC()->cart || !fvg_is_plugin_enabled()) {
         return;
     }
 
@@ -77,7 +145,7 @@ add_action('woocommerce_before_calculate_totals', 'fvg_adjust_voucher_price', 10
 
 // Add vouchers to cart when overall qualified subtotal meets thresholds
 function fvg_check_and_add_vouchers() {
-    if (!WC()->cart) {
+    if (!WC()->cart || !fvg_is_plugin_enabled()) {
         return;
     }
 
@@ -133,6 +201,10 @@ add_action( 'woocommerce_before_calculate_totals', 'fvg_check_and_add_vouchers',
 
 // Remember vouchers a user manually removes this session so we don't auto-re-add them immediately
 function fvg_record_user_removed_voucher($cart_item_key, $cart) {
+    if (!fvg_is_plugin_enabled()) {
+        return;
+    }
+
     if (empty($cart) || !isset($cart->removed_cart_contents)) {
         return;
     }
@@ -156,7 +228,7 @@ add_action( 'woocommerce_cart_item_removed', 'fvg_record_user_removed_voucher', 
 
 // Remove voucher if overall threshold not met anymore
 function fvg_maybe_remove_vouchers() {
-    if ( ! WC()->cart ) {
+    if ( ! WC()->cart || !fvg_is_plugin_enabled()) {
         return;
     }
 
@@ -214,6 +286,10 @@ add_action( 'woocommerce_before_calculate_totals', 'fvg_maybe_remove_vouchers', 
 
 // Prevent direct quantity changes of free vouchers
 function fvg_prevent_voucher_quantity_change( $cart_item_data, $cart_item_key ) {
+    if (!fvg_is_plugin_enabled()) {
+        return $cart_item_data;
+    }
+
     if ( isset( $cart_item_data['is_free_voucher'] ) && $cart_item_data['is_free_voucher'] ) {
         $cart_item_data['quantity_locked'] = true;
     }
@@ -223,6 +299,10 @@ add_filter( 'woocommerce_cart_item_data', 'fvg_prevent_voucher_quantity_change',
 
 // Hide quantity selector for free vouchers in cart
 function fvg_hide_voucher_quantity( $product_quantity, $cart_item_key, $cart_item ) {
+    if (!fvg_is_plugin_enabled()) {
+        return $product_quantity;
+    }
+
     if ( isset( $cart_item['is_free_voucher'] ) && $cart_item['is_free_voucher'] ) {
         return '<span class="quantity">1</span>';
     }
@@ -232,6 +312,10 @@ add_filter( 'woocommerce_cart_item_quantity', 'fvg_hide_voucher_quantity', 10, 3
 
 // Server-side: prevent updating voucher quantities via cart update
 function fvg_block_voucher_quantity_update( $passed, $cart_item_key, $values, $quantity ) {
+    if (!fvg_is_plugin_enabled()) {
+        return $passed;
+    }
+
     if ( ! empty( $values['is_free_voucher'] ) ) {
         if ( intval( $quantity ) !== intval( $values['quantity'] ) ) {
             wc_add_notice( __( 'You cannot change the quantity of a free voucher.', 'woocommerce' ), 'error' );
@@ -244,6 +328,10 @@ add_filter( 'woocommerce_update_cart_validation', 'fvg_block_voucher_quantity_up
 
 // Add class to voucher cart rows
 function fvg_add_voucher_cart_class( $class, $cart_item, $cart_item_key ) {
+    if (!fvg_is_plugin_enabled()) {
+        return $class;
+    }
+
     if ( ! empty( $cart_item['is_free_voucher'] ) ) {
         $class .= ' fvg-free-voucher';
     }
@@ -253,6 +341,10 @@ add_filter( 'woocommerce_cart_item_class', 'fvg_add_voucher_cart_class', 10, 3 )
 
 // Override subtotal display for vouchers to a non-editable span
 function fvg_override_voucher_subtotal( $cart_item_subtotal, $cart_item, $cart_item_key ) {
+    if (!fvg_is_plugin_enabled()) {
+        return $cart_item_subtotal;
+    }
+
     if ( ! empty( $cart_item['is_free_voucher'] ) ) {
         $formatted = wc_price(0);
         $escaped = esc_attr( strip_tags( $formatted ) );
@@ -264,7 +356,7 @@ add_filter( 'woocommerce_cart_item_subtotal', 'fvg_override_voucher_subtotal', 9
 
 // Small JS fallback to clean up any inputs other code injects client-side
 function fvg_print_voucher_cart_js() {
-    if (!is_cart() && !is_checkout()) {
+    if (!is_cart() && !is_checkout() || !fvg_is_plugin_enabled()) {
         return;
     }
 
@@ -313,7 +405,7 @@ add_action( 'woocommerce_thankyou', 'fvg_clear_removed_vouchers_session' );
 
 // Cleanup removed-vouchers session when cart items change so we don't remember vouchers that no longer apply
 function fvg_cleanup_removed_vouchers_on_cart_change() {
-    if ( ! WC()->cart ) {
+    if ( ! WC()->cart || !fvg_is_plugin_enabled()) {
         return;
     }
 
@@ -358,7 +450,7 @@ add_action( 'woocommerce_before_calculate_totals', 'fvg_cleanup_removed_vouchers
 
 // Check vouchers when quantity is updated in cart or other cart validations occur
 function fvg_check_vouchers_on_quantity_update($cart) {
-    if (is_admin() || !WC()->cart) {
+    if (is_admin() || !WC()->cart || !fvg_is_plugin_enabled()) {
         return;
     }
     // Re-run add/remove logic by leveraging existing hooks in the next cycle.
@@ -375,13 +467,16 @@ add_action('woocommerce_update_cart_action_cart_updated', 'fvg_check_vouchers_on
 
 // Also check when AJAX quantity is updated
 function fvg_check_vouchers_on_ajax_quantity_update() {
+    if (!fvg_is_plugin_enabled()) {
+        return;
+    }
     fvg_check_vouchers_on_quantity_update(WC()->cart);
 }
 add_action('woocommerce_ajax_cart_item_quantities_updated', 'fvg_check_vouchers_on_ajax_quantity_update', 20);
 
 // Modify the add to cart handler to ensure proper timing (overall subtotal based)
 function fvg_check_vouchers_on_add($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data) {
-    if (is_admin()) {
+    if (is_admin() || !fvg_is_plugin_enabled()) {
         return;
     }
     if (!empty($cart_item_data['is_free_voucher'])) {
@@ -393,5 +488,24 @@ function fvg_check_vouchers_on_add($cart_item_key, $product_id, $quantity, $vari
 }
 remove_action('woocommerce_add_to_cart', 'fvg_check_vouchers_on_add', 20);
 add_action('woocommerce_add_to_cart', 'fvg_check_vouchers_on_add', 100, 6 );
+
+// Add settings link to plugins page
+function fvg_add_settings_link($links) {
+    $settings_link = '<a href="' . admin_url('options-general.php?page=free-voucher-settings') . '">' . __('Settings', 'free-voucher-gift') . '</a>';
+    array_unshift($links, $settings_link);
+    return $links;
+}
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'fvg_add_settings_link');
+
+// Add admin notice when plugin is disabled
+function fvg_admin_notice_disabled() {
+    if (!fvg_is_plugin_enabled() && current_user_can('manage_options')) {
+        echo '<div class="notice notice-warning">';
+        echo '<p><strong>' . esc_html__('Free Voucher Gift plugin is currently disabled.', 'free-voucher-gift') . '</strong> ';
+        echo '<a href="' . admin_url('options-general.php?page=free-voucher-settings') . '">' . esc_html__('Enable it here', 'free-voucher-gift') . '</a></p>';
+        echo '</div>';
+    }
+}
+add_action('admin_notices', 'fvg_admin_notice_disabled');
 
 // End of file
