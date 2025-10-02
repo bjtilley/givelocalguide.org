@@ -666,6 +666,7 @@ function custom_shop_page_categories($query) {
                    'environment',
                    'youth',
                    'social-justice',
+                   'food-security',
                    'health-and-wellness',
                 ),
                 'operator' => 'IN',
