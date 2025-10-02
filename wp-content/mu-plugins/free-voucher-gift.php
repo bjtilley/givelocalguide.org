@@ -10,6 +10,35 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Helper: safe retrieval of a cart item's line subtotal even early in lifecycle
+if (!function_exists('fvg_get_line_subtotal')) {
+    function fvg_get_line_subtotal($cart_item) {
+        if (isset($cart_item['line_subtotal'])) {
+            return (float)$cart_item['line_subtotal'];
+        }
+        // Fallback: product price * quantity
+        if (isset($cart_item['data']) && is_object($cart_item['data']) && method_exists($cart_item['data'], 'get_price')) {
+            $price = (float)$cart_item['data']->get_price();
+            $qty = isset($cart_item['quantity']) ? (int)$cart_item['quantity'] : 1;
+            return $price * $qty;
+        }
+        return 0.0;
+    }
+}
+
+// Helper: compute subtotal of all non-voucher, non-free-gift items
+if (!function_exists('fvg_get_cart_qualified_subtotal')) {
+    function fvg_get_cart_qualified_subtotal() {
+        if (!WC()->cart) return 0.0;
+        $total = 0.0;
+        foreach (WC()->cart->get_cart() as $cart_item) {
+            if (!empty($cart_item['is_free_voucher']) || !empty($cart_item['is_free_gift'])) continue;
+            $total += fvg_get_line_subtotal($cart_item);
+        }
+        return $total;
+    }
+}
+
 // Register the voucher product category if it doesn't exist
 function fvg_register_voucher_category() {
     if (!term_exists('free-product-voucher', 'product_cat')) {
@@ -46,75 +75,58 @@ function fvg_adjust_voucher_price($cart) {
 }
 add_action('woocommerce_before_calculate_totals', 'fvg_adjust_voucher_price', 10);
 
-// Add vouchers to cart when thresholds are met
+// Add vouchers to cart when overall qualified subtotal meets thresholds
 function fvg_check_and_add_vouchers() {
     if (!WC()->cart) {
         return;
     }
 
-    $processed_products = array();
+    // Build once per invocation
+    $qualified_subtotal = fvg_get_cart_qualified_subtotal();
+    if ($qualified_subtotal <= 0) return;
+
     $removed_ids = WC()->session->get('fvg_user_removed_vouchers', array());
     $removed_ids = is_array($removed_ids) ? $removed_ids : array();
 
-    foreach (WC()->cart->get_cart() as $cart_item) {
-        $product_id = $cart_item['product_id'];
-
-        // Skip if already processed or is a free item
-        if (in_array($product_id, $processed_products) ||
-            !empty($cart_item['is_free_gift']) ||
-            !empty($cart_item['is_free_voucher'])) {
-            continue;
-        }
-
-        // Calculate total for this product only
-        $product_total = isset($cart_item['original_price']) ?
-                       $cart_item['original_price'] * $cart_item['quantity'] :
-                       $cart_item['line_subtotal'];
-
-        // Get all possible vouchers
-        $args = array(
-            'post_type' => 'product',
-            'posts_per_page' => -1,
-            'tax_query' => array(
-                array(
-                    'taxonomy' => 'product_cat',
-                    'field'    => 'slug',
-                    'terms'    => 'free-product-voucher',
-                ),
+    $args = array(
+        'post_type' => 'product',
+        'posts_per_page' => -1,
+        'tax_query' => array(
+            array(
+                'taxonomy' => 'product_cat',
+                'field'    => 'slug',
+                'terms'    => 'free-product-voucher',
             ),
-            'fields' => 'ids',
-        );
+        ),
+        'fields' => 'ids',
+    );
+    $voucher_ids = get_posts($args);
 
-        $voucher_ids = get_posts($args);
-        foreach ($voucher_ids as $vid) {
-            if (in_array(intval($vid), $removed_ids, true)) {
-                continue;
-            }
+    foreach ($voucher_ids as $vid) {
+        $vid_int = intval($vid);
+        if (in_array($vid_int, $removed_ids, true)) continue; // user removed this voucher earlier this session
 
-            $threshold = floatval(get_field('free_voucher_threshold', $vid));
-            if ($threshold > 0 && $product_total >= $threshold) {
-                // Check if this voucher is already in cart
-                $voucher_in_cart = false;
-                foreach (WC()->cart->get_cart() as $existing_item) {
-                    if ($existing_item['product_id'] == $vid) {
-                        $voucher_in_cart = true;
-                        break;
-                    }
-                }
+        $threshold = floatval(get_field('free_voucher_threshold', $vid_int));
+        if ($threshold <= 0) continue;
+        if ($qualified_subtotal < $threshold) continue; // Not yet reached overall threshold
 
-                if (!$voucher_in_cart) {
-                    $voucher_product = wc_get_product($vid);
-                    if ($voucher_product) {
-                        WC()->cart->add_to_cart($vid, 1, 0, array(), array(
-                            'is_free_voucher' => true,
-                            'original_price' => 0
-                        ));
-                    }
-                }
+        // Already in cart?
+        $voucher_in_cart = false;
+        foreach (WC()->cart->get_cart() as $existing_item) {
+            if ($existing_item['product_id'] == $vid_int) {
+                $voucher_in_cart = true;
+                break;
             }
         }
+        if ($voucher_in_cart) continue;
 
-        $processed_products[] = $product_id;
+        $voucher_product = wc_get_product($vid_int);
+        if ($voucher_product) {
+            WC()->cart->add_to_cart($vid_int, 1, 0, array(), array(
+                'is_free_voucher' => true,
+                'original_price' => 0
+            ));
+        }
     }
 }
 add_action( 'woocommerce_before_calculate_totals', 'fvg_check_and_add_vouchers', 20 );
@@ -142,13 +154,15 @@ function fvg_record_user_removed_voucher($cart_item_key, $cart) {
 }
 add_action( 'woocommerce_cart_item_removed', 'fvg_record_user_removed_voucher', 20, 2 );
 
-// Remove voucher if threshold not met anymore
+// Remove voucher if overall threshold not met anymore
 function fvg_maybe_remove_vouchers() {
     if ( ! WC()->cart ) {
         return;
     }
 
-    // Build map of voucher thresholds again
+    $qualified_subtotal = fvg_get_cart_qualified_subtotal();
+
+    // Map of voucher => threshold
     $vouchers = array();
     $args = array(
         'post_type'      => 'product',
@@ -174,34 +188,17 @@ function fvg_maybe_remove_vouchers() {
         return;
     }
 
-    // For each voucher in cart, check if any non-voucher cart item meets its threshold
     $gifts_to_remove = array();
 
     foreach ( WC()->cart->get_cart() as $cart_item_key => $cart_item ) {
-        if ( empty( $cart_item['is_free_voucher'] ) ) {
-            continue;
-        }
-
+        if ( empty( $cart_item['is_free_voucher'] ) ) continue;
         $vid = intval( $cart_item['product_id'] );
         $threshold = isset( $vouchers[ $vid ] ) ? $vouchers[ $vid ] : 0;
-        if ( $threshold <= 0 ) {
-            // Not a managed voucher anymore — remove
+        if ($threshold <= 0) {
             $gifts_to_remove[] = $cart_item_key;
             continue;
         }
-
-        $still_valid = false;
-        foreach ( WC()->cart->get_cart() as $other_key => $other_item ) {
-            if ( ! empty( $other_item['is_free_voucher'] ) ) {
-                continue;
-            }
-            if ( floatval( $other_item['line_subtotal'] ) >= $threshold ) {
-                $still_valid = true;
-                break;
-            }
-        }
-
-        if ( ! $still_valid ) {
+        if ($qualified_subtotal < $threshold) {
             $gifts_to_remove[] = $cart_item_key;
         }
     }
@@ -237,7 +234,6 @@ add_filter( 'woocommerce_cart_item_quantity', 'fvg_hide_voucher_quantity', 10, 3
 function fvg_block_voucher_quantity_update( $passed, $cart_item_key, $values, $quantity ) {
     if ( ! empty( $values['is_free_voucher'] ) ) {
         if ( intval( $quantity ) !== intval( $values['quantity'] ) ) {
-            // Prevent change
             wc_add_notice( __( 'You cannot change the quantity of a free voucher.', 'woocommerce' ), 'error' );
             return false;
         }
@@ -327,34 +323,27 @@ function fvg_cleanup_removed_vouchers_on_cart_change() {
         return;
     }
 
-    // Build a list of all voucher IDs that are still valid (would be auto-added) based on current cart
-    $valid_voucher_ids = array();
-    foreach ( WC()->cart->get_cart() as $cart_item ) {
-        if ( ! empty( $cart_item['is_free_voucher'] ) ) {
-            continue;
-        }
-        $product_id = $cart_item['product_id'];
-        $line_subtotal = floatval( $cart_item['line_subtotal'] );
+    // Determine which vouchers would still qualify based on current overall subtotal
+    $qualified_subtotal = fvg_get_cart_qualified_subtotal();
 
-        // Check each voucher product for threshold
-        $args = array(
-            'post_type'      => 'product',
-            'posts_per_page' => -1,
-            'tax_query'      => array(
-                array(
-                    'taxonomy' => 'product_cat',
-                    'field'    => 'slug',
-                    'terms'    => 'free-product-voucher',
-                ),
+    $args = array(
+        'post_type'      => 'product',
+        'posts_per_page' => -1,
+        'tax_query'      => array(
+            array(
+                'taxonomy' => 'product_cat',
+                'field'    => 'slug',
+                'terms'    => 'free-product-voucher',
             ),
-            'fields' => 'ids',
-        );
-        $voucher_ids = get_posts( $args );
-        foreach ( $voucher_ids as $vid ) {
-            $threshold = floatval( get_field( 'free_voucher_threshold', $vid ) );
-            if ( $threshold > 0 && $line_subtotal >= $threshold ) {
-                $valid_voucher_ids[] = intval( $vid );
-            }
+        ),
+        'fields' => 'ids',
+    );
+    $voucher_ids = get_posts( $args );
+    $valid_voucher_ids = array();
+    foreach ($voucher_ids as $vid) {
+        $threshold = floatval(get_field('free_voucher_threshold', $vid));
+        if ($threshold > 0 && $qualified_subtotal >= $threshold) {
+            $valid_voucher_ids[] = intval($vid);
         }
     }
 
@@ -367,74 +356,18 @@ function fvg_cleanup_removed_vouchers_on_cart_change() {
 }
 add_action( 'woocommerce_before_calculate_totals', 'fvg_cleanup_removed_vouchers_on_cart_change', 5 );
 
-// Check vouchers when quantity is updated in cart
+// Check vouchers when quantity is updated in cart or other cart validations occur
 function fvg_check_vouchers_on_quantity_update($cart) {
     if (is_admin() || !WC()->cart) {
         return;
     }
-
-    // Force a recalculation of cart totals
+    // Re-run add/remove logic by leveraging existing hooks in the next cycle.
+    // Force recalculation so hooks fire with updated data.
     WC()->cart->calculate_totals();
-
-    $args = array(
-        'post_type'      => 'product',
-        'posts_per_page' => -1,
-        'tax_query'      => array(
-            array(
-                'taxonomy' => 'product_cat',
-                'field'    => 'slug',
-                'terms'    => 'free-product-voucher',
-            ),
-        ),
-        'fields' => 'ids',
-    );
-
-    $voucher_ids = get_posts($args);
-    if (empty($voucher_ids)) {
-        return;
-    }
-
-    $removed_ids = WC()->session->get('fvg_user_removed_vouchers', array());
-    $removed_ids = is_array($removed_ids) ? $removed_ids : array();
-
-    foreach (WC()->cart->get_cart() as $cart_item) {
-        if (!empty($cart_item['is_free_voucher'])) {
-            continue;  // Skip voucher items
-        }
-
-        $product_id = $cart_item['product_id'];
-        $product_total = $cart_item['line_subtotal'];
-
-        foreach ($voucher_ids as $vid) {
-            if (in_array(intval($vid), $removed_ids, true)) {
-                continue;
-            }
-
-            $threshold = floatval(get_field('free_voucher_threshold', $vid));
-            if ($threshold > 0 && $product_total >= $threshold) {
-                // Check if this voucher is already in cart
-                $voucher_in_cart = false;
-                foreach (WC()->cart->get_cart() as $existing_item) {
-                    if ($existing_item['product_id'] == $vid) {
-                        $voucher_in_cart = true;
-                        break;
-                    }
-                }
-
-                if (!$voucher_in_cart) {
-                    $voucher_product = wc_get_product($vid);
-                    if ($voucher_product) {
-                        WC()->cart->add_to_cart($vid, 1, 0, array(), array(
-                            'is_free_voucher' => true
-                        ));
-                    }
-                }
-            }
-        }
-    }
+    // Directly invoke add + maybe remove to be immediate.
+    fvg_check_and_add_vouchers();
+    fvg_maybe_remove_vouchers();
 }
-
-// Attach to various cart update hooks
 add_action('woocommerce_after_cart_item_quantity_update', 'fvg_check_vouchers_on_quantity_update', 20, 1);
 add_action('woocommerce_check_cart_items', 'fvg_check_vouchers_on_quantity_update', 20);
 add_action('woocommerce_cart_loaded_from_session', 'fvg_check_vouchers_on_quantity_update', 20);
@@ -446,77 +379,18 @@ function fvg_check_vouchers_on_ajax_quantity_update() {
 }
 add_action('woocommerce_ajax_cart_item_quantities_updated', 'fvg_check_vouchers_on_ajax_quantity_update', 20);
 
-// Modify the add to cart handler to ensure proper timing
+// Modify the add to cart handler to ensure proper timing (overall subtotal based)
 function fvg_check_vouchers_on_add($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data) {
     if (is_admin()) {
         return;
     }
-
-    // Skip if the added item is itself a voucher
     if (!empty($cart_item_data['is_free_voucher'])) {
-        return;
+        return; // ignore voucher itself
     }
-
-    // Force cart totals calculation to ensure accurate numbers
     WC()->cart->calculate_totals();
-
-    $args = array(
-        'post_type'      => 'product',
-        'posts_per_page' => -1,
-        'tax_query'      => array(
-            array(
-                'taxonomy' => 'product_cat',
-                'field'    => 'slug',
-                'terms'    => 'free-product-voucher',
-            ),
-        ),
-        'fields' => 'ids',
-    );
-
-    $voucher_ids = get_posts($args);
-    if (empty($voucher_ids)) {
-        return;
-    }
-
-    // Calculate total amount for this product including all quantities in cart
-    $product_total = 0;
-    foreach (WC()->cart->get_cart() as $cart_item) {
-        if ($cart_item['product_id'] == $product_id) {
-            $product_total += $cart_item['line_subtotal'];
-        }
-    }
-
-    $removed_ids = WC()->session->get('fvg_user_removed_vouchers', array());
-    $removed_ids = is_array($removed_ids) ? $removed_ids : array();
-
-    foreach ($voucher_ids as $vid) {
-        if (in_array(intval($vid), $removed_ids, true)) {
-            continue;
-        }
-
-        $threshold = floatval(get_field('free_voucher_threshold', $vid));
-        if ($threshold > 0 && $product_total >= $threshold) {
-            // Check if this voucher is already in cart
-            $voucher_in_cart = false;
-            foreach (WC()->cart->get_cart() as $existing_item) {
-                if ($existing_item['product_id'] == $vid) {
-                    $voucher_in_cart = true;
-                    break;
-                }
-            }
-
-            if (!$voucher_in_cart) {
-                $voucher_product = wc_get_product($vid);
-                if ($voucher_product) {
-                    WC()->cart->add_to_cart($vid, 1, 0, array(), array(
-                        'is_free_voucher' => true
-                    ));
-                }
-            }
-        }
-    }
+    fvg_check_and_add_vouchers();
+    fvg_maybe_remove_vouchers();
 }
-// Remove existing action and add with modified priority
 remove_action('woocommerce_add_to_cart', 'fvg_check_vouchers_on_add', 20);
 add_action('woocommerce_add_to_cart', 'fvg_check_vouchers_on_add', 100, 6 );
 
