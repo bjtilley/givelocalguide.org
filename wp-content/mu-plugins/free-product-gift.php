@@ -10,6 +10,65 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// Helper: safe retrieval of a cart item's line subtotal even early in lifecycle
+if (!function_exists('fpg_get_line_subtotal')) {
+    function fpg_get_line_subtotal($cart_item) {
+        if (isset($cart_item['line_subtotal'])) {
+            return (float)$cart_item['line_subtotal'];
+        }
+        // Fallback: product price * quantity
+        if (isset($cart_item['data']) && is_object($cart_item['data']) && method_exists($cart_item['data'], 'get_price')) {
+            $price = (float)$cart_item['data']->get_price();
+            $qty = isset($cart_item['quantity']) ? (int)$cart_item['quantity'] : 1;
+            return $price * $qty;
+        }
+        return 0.0;
+    }
+}
+
+// Helper: get all eligible gifts for a product based on its subtotal
+if (!function_exists('fpg_get_eligible_gifts')) {
+    function fpg_get_eligible_gifts($product_id, $product_subtotal) {
+        $eligible_gifts = array();
+
+        // Check if ACF repeater field exists
+        if (function_exists('get_field')) {
+            $free_product_gifts = get_field('free_product_gifts', $product_id);
+
+            if ($free_product_gifts && is_array($free_product_gifts)) {
+                foreach ($free_product_gifts as $gift_row) {
+                    $gift_product_id = isset($gift_row['nonprofit_free_product_gift']) ? intval($gift_row['nonprofit_free_product_gift']) : 0;
+                    $gift_threshold = isset($gift_row['nonprofit_gift_threshold']) ? floatval($gift_row['nonprofit_gift_threshold']) : 0;
+
+                    if ($gift_product_id > 0 && $gift_threshold > 0 && $product_subtotal >= $gift_threshold) {
+                        $eligible_gifts[] = array(
+                            'gift_id' => $gift_product_id,
+                            'threshold' => $gift_threshold,
+                            'parent_product' => $product_id
+                        );
+                    }
+                }
+            }
+        }
+
+        // Fallback to old single gift field for backward compatibility
+        if (empty($eligible_gifts)) {
+            $free_product_id = get_field('free_product_gift', $product_id);
+            $threshold = floatval(get_field('free_product_gift_threshold', $product_id));
+
+            if ($free_product_id && $threshold > 0 && $product_subtotal >= $threshold) {
+                $eligible_gifts[] = array(
+                    'gift_id' => intval($free_product_id),
+                    'threshold' => $threshold,
+                    'parent_product' => $product_id
+                );
+            }
+        }
+
+        return $eligible_gifts;
+    }
+}
+
 // Register the product category if it doesn't exist
 function fpg_register_product_category() {
     if (!term_exists('free-product-gift', 'product_cat')) {
@@ -46,13 +105,15 @@ function fpg_adjust_free_gift_price($cart) {
 }
 add_action('woocommerce_before_calculate_totals', 'fpg_adjust_free_gift_price', 10);
 
-// Check cart and add free gifts
+// Check cart and add free gifts based on new repeater field structure
 function fpg_check_and_add_free_gifts() {
     if (!WC()->cart) {
         return;
     }
 
     $processed_products = array();
+    $removed_ids = WC()->session->get('fpg_user_removed_gifts', array());
+    $removed_ids = is_array($removed_ids) ? $removed_ids : array();
 
     foreach (WC()->cart->get_cart() as $cart_item) {
         $product_id = $cart_item['product_id'];
@@ -64,41 +125,45 @@ function fpg_check_and_add_free_gifts() {
             continue;
         }
 
-        $free_product_id = get_field('free_product_gift', $product_id);
-        $threshold = floatval(get_field('free_product_gift_threshold', $product_id));
+        $product_subtotal = fpg_get_line_subtotal($cart_item);
+        $eligible_gifts = fpg_get_eligible_gifts($product_id, $product_subtotal);
 
-        if ($free_product_id && $threshold > 0) {
-            // Calculate total for this product only
-            $product_total = isset($cart_item['original_price']) ?
-                           $cart_item['original_price'] * $cart_item['quantity'] :
-                           $cart_item['line_subtotal'];
+        foreach ($eligible_gifts as $gift_data) {
+            $gift_id = $gift_data['gift_id'];
 
-            if ($product_total >= $threshold) {
-                $free_product_in_cart = false;
-                foreach (WC()->cart->get_cart() as $existing_item) {
-                    if ($existing_item['product_id'] == $free_product_id) {
-                        $free_product_in_cart = true;
-                        break;
-                    }
+            // Skip if user removed this gift earlier in session
+            if (in_array($gift_id, $removed_ids, true)) {
+                continue;
+            }
+
+            // Check if this gift is already in cart
+            $gift_in_cart = false;
+            foreach (WC()->cart->get_cart() as $existing_item) {
+                if ($existing_item['product_id'] == $gift_id && !empty($existing_item['is_free_gift'])) {
+                    $gift_in_cart = true;
+                    break;
                 }
+            }
 
-                if (!$free_product_in_cart) {
-                    $free_product = wc_get_product($free_product_id);
-                    if ($free_product && has_term('free-product-gift', 'product_cat', $free_product_id)) {
-                        WC()->cart->add_to_cart($free_product_id, 1, 0, array(), array(
-                            'is_free_gift' => true,
-                            'parent_product' => $product_id,
-                            'original_price' => 0
-                        ));
-                    }
+            if (!$gift_in_cart) {
+                $gift_product = wc_get_product($gift_id);
+                if ($gift_product && $gift_product->get_status() === 'publish' && $gift_product->is_purchasable()) {
+                    wc_clear_notices();
+                    WC()->cart->add_to_cart($gift_id, 1, 0, array(), array(
+                        'is_free_gift' => true,
+                        'parent_product' => $product_id,
+                        'gift_threshold' => $gift_data['threshold'],
+                        'original_price' => 0
+                    ));
+                    wc_clear_notices(); // Clear any notices to prevent user confusion
                 }
             }
         }
+
         $processed_products[] = $product_id;
     }
 }
 add_action('woocommerce_before_calculate_totals', 'fpg_check_and_add_free_gifts', 20);
-
 
 // When a user removes a free gift, remember it in the session so auto-add will skip that product
 function fpg_record_user_removed_gift($cart_item_key, $cart) {
@@ -130,22 +195,32 @@ function fpg_maybe_remove_free_gifts() {
     }
 
     $gifts_to_remove = array();
-    $valid_parent_products = array();
+    $valid_gifts = array(); // Track which gifts should stay
 
-    // First pass: collect valid parent products
-    foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
+    // First pass: determine which gifts should be valid based on current cart
+    foreach (WC()->cart->get_cart() as $cart_item) {
         $product_id = $cart_item['product_id'];
-        $threshold = floatval(get_field('free_product_gift_threshold', $product_id));
-        
-        if ($threshold > 0 && $cart_item['line_subtotal'] >= $threshold) {
-            $valid_parent_products[] = $product_id;
+
+        // Skip free gifts and vouchers
+        if (!empty($cart_item['is_free_gift']) || !empty($cart_item['is_free_voucher'])) {
+            continue;
+        }
+
+        $product_subtotal = fpg_get_line_subtotal($cart_item);
+        $eligible_gifts = fpg_get_eligible_gifts($product_id, $product_subtotal);
+
+        foreach ($eligible_gifts as $gift_data) {
+            $valid_gifts[] = $gift_data['gift_id'];
         }
     }
 
-    // Second pass: check free gifts
+    // Second pass: check free gifts and mark invalid ones for removal
     foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
         if (isset($cart_item['is_free_gift']) && $cart_item['is_free_gift']) {
-            if (!in_array($cart_item['parent_product'], $valid_parent_products)) {
+            $gift_id = $cart_item['product_id'];
+
+            // Remove if this gift is no longer valid
+            if (!in_array($gift_id, $valid_gifts)) {
                 $gifts_to_remove[] = $cart_item_key;
             }
         }
@@ -178,6 +253,18 @@ function fpg_hide_free_gift_quantity($product_quantity, $cart_item_key, $cart_it
     return $product_quantity;
 }
 add_filter('woocommerce_cart_item_quantity', 'fpg_hide_free_gift_quantity', 10, 3);
+
+// Server-side: prevent updating free gift quantities via cart update
+function fpg_block_free_gift_quantity_update($passed, $cart_item_key, $values, $quantity) {
+    if (!empty($values['is_free_gift'])) {
+        if (intval($quantity) !== intval($values['quantity'])) {
+            wc_add_notice(__('You cannot change the quantity of a free gift.', 'woocommerce'), 'error');
+            return false;
+        }
+    }
+    return $passed;
+}
+add_filter('woocommerce_update_cart_validation', 'fpg_block_free_gift_quantity_update', 10, 4);
 
 // Add a CSS class to free-gift cart rows so we can target them reliably on the front end
 function fpg_add_free_gift_cart_class( $class, $cart_item, $cart_item_key ) {
@@ -241,56 +328,6 @@ function fpg_print_free_gift_cart_js() {
 }
 add_action( 'wp_footer', 'fpg_print_free_gift_cart_js' );
 
-// --- NEW: prevent immediately re-adding a free gift that the user manually removed ---
-
-// When auto-adding gifts, skip any product IDs the user removed this session
-function fpg_check_and_add_free_gifts_filtered() {
-    if ( ! is_admin() && WC()->cart ) {
-        $removed_ids = WC()->session->get( 'fpg_user_removed_gifts', array() );
-        $removed_ids = is_array( $removed_ids ) ? $removed_ids : array();
-
-        foreach ( WC()->cart->get_cart() as $cart_item ) {
-            $product_id = $cart_item['product_id'];
-            $free_product_id = get_field( 'free_product_gift', $product_id );
-            $threshold = floatval( get_field( 'free_product_gift_threshold', $product_id ) );
-
-            if ( $free_product_id && $threshold > 0 ) {
-                // If user removed this free product earlier in this session, skip auto-adding
-                if ( in_array( intval( $free_product_id ), $removed_ids, true ) ) {
-                    continue;
-                }
-
-                $product_subtotal = $cart_item['line_subtotal'];
-
-                if ( $product_subtotal >= $threshold ) {
-                    $free_product_in_cart = false;
-                    foreach ( WC()->cart->get_cart() as $existing_item ) {
-                        if ( $existing_item['product_id'] == $free_product_id ) {
-                            $free_product_in_cart = true;
-                            break;
-                        }
-                    }
-
-                    if ( ! $free_product_in_cart ) {
-                        $free_product = wc_get_product( $free_product_id );
-                        if ( $free_product && has_term( 'free-product-gift', 'product_cat', $free_product_id ) ) {
-                            WC()->cart->add_to_cart( $free_product_id, 1, 0, array(), array(
-                                'is_free_gift'   => true,
-                                'parent_product' => $product_id,
-                            ) );
-
-                            wc_add_notice( sprintf( __( 'Congratulations! "%s" has been added to your cart as a free gift!', 'woocommerce' ), $free_product->get_name() ), 'success' );
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-// Replace original auto-add hook with filtered version
-remove_action( 'woocommerce_before_calculate_totals', 'fpg_check_and_add_free_gifts', 20 );
-add_action( 'woocommerce_before_calculate_totals', 'fpg_check_and_add_free_gifts_filtered', 20 );
-
 // When cart is emptied or checkout happens, clear the removed-gifts session so behavior resets
 function fpg_clear_removed_gifts_session() {
     if ( WC()->session ) {
@@ -300,8 +337,7 @@ function fpg_clear_removed_gifts_session() {
 add_action( 'woocommerce_cart_emptied', 'fpg_clear_removed_gifts_session' );
 add_action( 'woocommerce_thankyou', 'fpg_clear_removed_gifts_session' );
 
-// Also, if a parent product that previously triggered the free gift is changed/removed and the threshold no longer met,
-// clear any removed-gift entries that correspond to gifts that are no longer relevant.
+// Cleanup removed-gifts session when cart items change
 function fpg_cleanup_removed_gifts_on_cart_change() {
     if ( ! WC()->cart ) {
         return;
@@ -313,20 +349,24 @@ function fpg_cleanup_removed_gifts_on_cart_change() {
         return;
     }
 
-    // Build a list of all gift IDs that are still valid (would be auto-added) based on current cart
+    // Build a list of all gift IDs that are still valid based on current cart
     $valid_gift_ids = array();
     foreach ( WC()->cart->get_cart() as $cart_item ) {
+        if (!empty($cart_item['is_free_gift']) || !empty($cart_item['is_free_voucher'])) {
+            continue;
+        }
+
         $product_id = $cart_item['product_id'];
-        $free_product_id = get_field( 'free_product_gift', $product_id );
-        $threshold = floatval( get_field( 'free_product_gift_threshold', $product_id ) );
-        if ( $free_product_id && $threshold > 0 && $cart_item['line_subtotal'] >= $threshold ) {
-            $valid_gift_ids[] = intval( $free_product_id );
+        $product_subtotal = fpg_get_line_subtotal($cart_item);
+        $eligible_gifts = fpg_get_eligible_gifts($product_id, $product_subtotal);
+
+        foreach ($eligible_gifts as $gift_data) {
+            $valid_gift_ids[] = $gift_data['gift_id'];
         }
     }
 
-    // Remove any removed_ids that are no longer relevant (i.e., not in valid_gift_ids)
+    // Remove any removed_ids that are no longer relevant
     $kept = array_intersect( $removed_ids, $valid_gift_ids );
-    // If there are kept entries, keep them; otherwise clear all
     if ( empty( $kept ) ) {
         fpg_clear_removed_gifts_session();
     } else {
@@ -337,52 +377,57 @@ add_action( 'woocommerce_before_calculate_totals', 'fpg_cleanup_removed_gifts_on
 
 // Check and add free gifts when products are added to cart
 function fpg_check_free_gifts_on_add($cart_item_key, $product_id, $quantity, $variation_id, $variation, $cart_item_data) {
-    if (is_admin()) {
+    if (is_admin() || !empty($cart_item_data['is_free_gift'])) {
         return;
     }
 
     // Force cart totals calculation to ensure accurate numbers
     WC()->cart->calculate_totals();
 
-    $free_product_id = get_field('free_product_gift', $product_id);
-    $threshold = floatval(get_field('free_product_gift_threshold', $product_id));
-    
-    if ($free_product_id && $threshold > 0) {
-        // Calculate total amount for this product including the new addition and any existing quantities
-        $product_total = 0;
-        foreach (WC()->cart->get_cart() as $cart_item) {
-            if ($cart_item['product_id'] == $product_id) {
-                $product_total += $cart_item['line_subtotal'];
-            }
+    // Calculate total amount for this specific product (aggregate all instances)
+    $product_total = 0;
+    foreach (WC()->cart->get_cart() as $cart_item) {
+        if ($cart_item['product_id'] == $product_id && empty($cart_item['is_free_gift']) && empty($cart_item['is_free_voucher'])) {
+            $product_total += fpg_get_line_subtotal($cart_item);
+        }
+    }
+
+    $eligible_gifts = fpg_get_eligible_gifts($product_id, $product_total);
+    $removed_ids = WC()->session->get('fpg_user_removed_gifts', array());
+    $removed_ids = is_array($removed_ids) ? $removed_ids : array();
+
+    foreach ($eligible_gifts as $gift_data) {
+        $gift_id = $gift_data['gift_id'];
+
+        // Skip if user removed this gift
+        if (in_array($gift_id, $removed_ids, true)) {
+            continue;
         }
         
-        // Check if we meet the threshold
-        if ($product_total >= $threshold) {
-            // Check if the free product is already in cart
-            $free_product_in_cart = false;
-            foreach (WC()->cart->get_cart() as $existing_item) {
-                if ($existing_item['product_id'] == $free_product_id) {
-                    $free_product_in_cart = true;
-                    break;
-                }
+        // Check if the free product is already in cart
+        $free_product_in_cart = false;
+        foreach (WC()->cart->get_cart() as $existing_item) {
+            if ($existing_item['product_id'] == $gift_id && !empty($existing_item['is_free_gift'])) {
+                $free_product_in_cart = true;
+                break;
             }
-            
-            // Add the free product if not already in cart
-            if (!$free_product_in_cart) {
-                $free_product = wc_get_product($free_product_id);
-                if ($free_product && has_term('free-product-gift', 'product_cat', $free_product_id)) {
-                    WC()->cart->add_to_cart($free_product_id, 1, 0, array(), array(
-                        'is_free_gift' => true,
-                        'parent_product' => $product_id
-                    ));
-                }
+        }
+
+        if (!$free_product_in_cart) {
+            $free_product = wc_get_product($gift_id);
+            if ($free_product && $free_product->get_status() === 'publish' && $free_product->is_purchasable()) {
+                wc_clear_notices();
+                WC()->cart->add_to_cart($gift_id, 1, 0, array(), array(
+                    'is_free_gift' => true,
+                    'parent_product' => $product_id,
+                    'gift_threshold' => $gift_data['threshold']
+                ));
+                wc_clear_notices(); // Clear any notices to prevent user confusion
             }
         }
     }
 }
-// Remove existing action and add with modified priority
-remove_action('woocommerce_add_to_cart', 'fpg_check_free_gifts_on_add', 20);
-add_action('woocommerce_add_to_cart', 'fpg_check_free_gifts_on_add', 100, 6);
+add_action('woocommerce_add_to_cart', 'fpg_check_free_gifts_on_add', 10, 6);
 
 // Check free gifts when quantity is updated in cart
 function fpg_check_gifts_on_quantity_update($cart) {
@@ -393,36 +438,45 @@ function fpg_check_gifts_on_quantity_update($cart) {
     // Force a recalculation of cart totals
     WC()->cart->calculate_totals();
 
+    $removed_ids = WC()->session->get('fpg_user_removed_gifts', array());
+    $removed_ids = is_array($removed_ids) ? $removed_ids : array();
+
     foreach (WC()->cart->get_cart() as $cart_item) {
-        if (!empty($cart_item['is_free_gift'])) {
+        if (!empty($cart_item['is_free_gift']) || !empty($cart_item['is_free_voucher'])) {
             continue;  // Skip free gift items
         }
 
         $product_id = $cart_item['product_id'];
-        $free_product_id = get_field('free_product_gift', $product_id);
-        $threshold = floatval(get_field('free_product_gift_threshold', $product_id));
-        
-        if ($free_product_id && $threshold > 0) {
-            $product_total = $cart_item['line_subtotal'];
-            
-            if ($product_total >= $threshold) {
-                // Check if the free product is already in cart
-                $free_product_in_cart = false;
-                foreach (WC()->cart->get_cart() as $existing_item) {
-                    if ($existing_item['product_id'] == $free_product_id) {
-                        $free_product_in_cart = true;
-                        break;
-                    }
+        $product_subtotal = fpg_get_line_subtotal($cart_item);
+        $eligible_gifts = fpg_get_eligible_gifts($product_id, $product_subtotal);
+
+        foreach ($eligible_gifts as $gift_data) {
+            $gift_id = $gift_data['gift_id'];
+
+            // Skip if user removed this gift
+            if (in_array($gift_id, $removed_ids, true)) {
+                continue;
+            }
+
+            // Check if the free product is already in cart
+            $free_product_in_cart = false;
+            foreach (WC()->cart->get_cart() as $existing_item) {
+                if ($existing_item['product_id'] == $gift_id && !empty($existing_item['is_free_gift'])) {
+                    $free_product_in_cart = true;
+                    break;
                 }
-                
-                if (!$free_product_in_cart) {
-                    $free_product = wc_get_product($free_product_id);
-                    if ($free_product && has_term('free-product-gift', 'product_cat', $free_product_id)) {
-                        WC()->cart->add_to_cart($free_product_id, 1, 0, array(), array(
-                            'is_free_gift' => true,
-                            'parent_product' => $product_id
-                        ));
-                    }
+            }
+
+            if (!$free_product_in_cart) {
+                $free_product = wc_get_product($gift_id);
+                if ($free_product && $free_product->get_status() === 'publish' && $free_product->is_purchasable()) {
+                    wc_clear_notices();
+                    WC()->cart->add_to_cart($gift_id, 1, 0, array(), array(
+                        'is_free_gift' => true,
+                        'parent_product' => $product_id,
+                        'gift_threshold' => $gift_data['threshold']
+                    ));
+                    wc_clear_notices(); // Clear any notices to prevent user confusion
                 }
             }
         }
@@ -440,3 +494,18 @@ function fpg_check_gifts_on_ajax_quantity_update() {
     fpg_check_gifts_on_quantity_update(WC()->cart);
 }
 add_action('woocommerce_ajax_cart_item_quantities_updated', 'fpg_check_gifts_on_ajax_quantity_update', 20);
+
+// Also add immediate trigger on cart updates for better reliability
+function fpg_immediate_gift_check() {
+    if (is_admin() || !WC()->cart) {
+        return;
+    }
+    fpg_check_and_add_free_gifts();
+}
+add_action('woocommerce_cart_updated', 'fpg_immediate_gift_check');
+add_action('wp_loaded', function() {
+    if (!is_admin() && WC()->cart && !WC()->cart->is_empty()) {
+        fpg_immediate_gift_check();
+    }
+});
+
