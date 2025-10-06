@@ -29,6 +29,18 @@ function custom_admin_styles() {
 }
 add_action( 'admin_enqueue_scripts', 'custom_admin_styles' );
 
+
+// Swiper JS and CSS from CDN
+function gl_swiper_scripts() {
+    wp_enqueue_style(
+        'gl-swiper-css',
+        'https://cdn.jsdelivr.net/npm/swiper@12/swiper-bundle.min.css',
+        array(),
+        '12.0.0'
+    );
+}
+add_action('wp_enqueue_scripts', 'gl_swiper_scripts', 1);
+
 // Change add to cart text on single product page
 add_filter( 'woocommerce_product_single_add_to_cart_text', 'woocommerce_add_to_cart_button_text_single' );
 function woocommerce_add_to_cart_button_text_single() {
@@ -678,3 +690,14 @@ function custom_shop_page_categories($query) {
 }
 add_action('pre_get_posts', 'custom_shop_page_categories');
 
+
+add_shortcode('woocommernce_gl_donor_cards', function () {
+
+    ob_start();
+    $template_path = get_stylesheet_directory() . '/partials/gl-donor-cards.php';
+    if (file_exists($template_path)) {
+        include $template_path;
+    }
+    return ob_get_clean();
+
+});

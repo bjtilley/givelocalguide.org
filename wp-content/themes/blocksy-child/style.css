@@ -109,3 +109,41 @@ ul.products.columns-1 li:last-child {
 
 
 
+/* Donor cards formatting */
+:root {
+    /* Core palette to mimic Bootstrap 5.3 */
+    --gl-primary: #0d6efd;
+    --gl-secondary:#6c757d;
+    --gl-success: #198754;
+    --gl-danger: #dc3545;
+    --gl-warning: #ffc107;
+    --gl-info: #0dcaf0;
+    --gl-light: #f8f9fa;
+    --gl-dark: #212529;
+
+
+    --gl-border-color:#dee2e6;
+    --gl-border-width:1px;
+    --gl-border-radius:.375rem; /* same radius as .rounded-3 */
+
+
+    --gl-body-bg: #f5f6f8;
+    --gl-body-color: #212529;
+}
+
+
+.gl-donor-card__card {
+    background: white;
+    border: var(--gl-border-width) solid var(--gl-border-color);
+    border-radius: var(--gl-border-radius);
+}
+
+
+.gl-donor-card__card-body { padding: 1rem; }
+
+
+.gl-donor-card__card-title {
+    margin: 0 0 .5rem 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
