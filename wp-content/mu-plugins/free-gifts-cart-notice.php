@@ -48,7 +48,7 @@ function fpgv_cart_has_qualifying_free_items() {
     );
 
     $voucher_ids = get_posts( $args );
-    if ( ! empty( $voucher_ids ) ) {
+    if ( ! empty( $voucher_ids ) && fvg_is_plugin_enabled()) {
         foreach ( $voucher_ids as $vid ) {
             $threshold = floatval( get_field( 'free_voucher_threshold', $vid ) );
             if ( $threshold > 0 ) {
