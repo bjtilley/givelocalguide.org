@@ -497,15 +497,5 @@ function fvg_add_settings_link($links) {
 }
 add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'fvg_add_settings_link');
 
-// Add admin notice when plugin is disabled
-function fvg_admin_notice_disabled() {
-    if (!fvg_is_plugin_enabled() && current_user_can('manage_options')) {
-        echo '<div class="notice notice-warning">';
-        echo '<p><strong>' . esc_html__('Free Voucher Gift plugin is currently disabled.', 'free-voucher-gift') . '</strong> ';
-        echo '<a href="' . admin_url('options-general.php?page=free-voucher-settings') . '">' . esc_html__('Enable it here', 'free-voucher-gift') . '</a></p>';
-        echo '</div>';
-    }
-}
-add_action('admin_notices', 'fvg_admin_notice_disabled');
 
 // End of file
