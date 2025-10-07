@@ -110,40 +110,46 @@ ul.products.columns-1 li:last-child {
 
 
 /* Donor cards formatting */
-:root {
-    /* Core palette to mimic Bootstrap 5.3 */
-    --gl-primary: #0d6efd;
-    --gl-secondary:#6c757d;
-    --gl-success: #198754;
-    --gl-danger: #dc3545;
-    --gl-warning: #ffc107;
-    --gl-info: #0dcaf0;
-    --gl-light: #f8f9fa;
-    --gl-dark: #212529;
-
-
-    --gl-border-color:#dee2e6;
-    --gl-border-width:1px;
-    --gl-border-radius:.375rem; /* same radius as .rounded-3 */
-
-
-    --gl-body-bg: #f5f6f8;
-    --gl-body-color: #212529;
+.swiper {
+    width: 100%;
+    height: 100%;
 }
 
-
-.gl-donor-card__card {
-    background: white;
-    border: var(--gl-border-width) solid var(--gl-border-color);
-    border-radius: var(--gl-border-radius);
+.swiper-slide {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    border-radius: 8px;
+    padding: 10px;
+    color: white;
+    line-height: 1.1;
 }
 
+.gl-donor-card__city, .gl-donor-card__timeago {
+    font-size: 0.8rem;
+    font-weight: 500;
+}
 
-.gl-donor-card__card-body { padding: 1rem; }
+.gl-donor-card--tier-1 {
+    background-color: var(--theme-palette-color-4);
+}
 
+.gl-donor-card--tier-2 {
+    background-color: var(--theme-palette-color-3);
+}
 
-.gl-donor-card__card-title {
-    margin: 0 0 .5rem 0;
-    font-size: 1.1rem;
-    font-weight: 600;
+.gl-donor-card--tier-3 {
+    background-color: var(--theme-palette-color-2);
+}
+
+.gl-donor-card--tier-4 {
+    background-color: var(--theme-palette-color-1);
+}
+
+.gl-donor-card__total {
+    font-size: 1.0rem;
+    font-weight: 700;
 }

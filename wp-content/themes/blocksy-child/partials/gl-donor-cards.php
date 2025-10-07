@@ -2,47 +2,12 @@
 
 $orders = wc_get_orders([
     'status' => ['completed', 'processing', 'on-hold'],
-    'limit'  => 20,
+    'limit'  => 30,
     'date_created' => '>=2025-09-01',
 ]);
 
 ?>
 
-<style>
-    .swiper {
-        width: 100%;
-        height: 100%;
-    }
-
-    .swiper-slide {
-        text-align: center;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        height: calc((100% - 30px) / 2) !important;
-        gap: 8px;
-        border-radius: 8px;
-        padding: 16px;
-        color: white;
-    }
-
-    .gl-donor-card--tier-1 {
-        background-color: var(--theme-palette-color-4);
-    }
-
-    .gl-donor-card--tier-2 {
-        background-color: var(--theme-palette-color-3);
-    }
-
-    .gl-donor-card--tier-3 {
-        background-color: var(--theme-palette-color-2);
-    }
-
-    .gl-donor-card--tier-4 {
-        background-color: var(--theme-palette-color-1);
-    }
-</style>
 
 <div class="swiper gl-donor-card__swiper">
     <div class="swiper-wrapper">
@@ -73,7 +38,7 @@ $orders = wc_get_orders([
 <script src="https://cdn.jsdelivr.net/npm/swiper@12/swiper-bundle.min.js"></script>
 <script>
     // Defaults
-    const defaultPostsPerSlide = 10;
+    const defaultPostsPerSlide = 12;
 
     // Presets
     const presets = {
@@ -91,7 +56,7 @@ $orders = wc_get_orders([
                 rows: 1,
             },
         },
-        10: {
+        12: {
             mobile: {
                 slidesPerRow: 1,
                 rows: 1,
@@ -101,7 +66,7 @@ $orders = wc_get_orders([
                 rows: 1,
             },
             desktop: {
-                slidesPerRow: 5,
+                slidesPerRow: 6,
                 rows: 2,
             },
         },
