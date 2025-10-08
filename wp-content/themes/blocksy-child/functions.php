@@ -1,9 +1,7 @@
 <?php
 
-if (! defined('WP_DEBUG')) {
-	die( 'Direct access forbidden.' );
-}
 
+require_once get_stylesheet_directory() . '/includes/GLAppConfig.php';
 
 function blocksy_child_scripts() {
     // Enqueue parent theme style first
@@ -700,4 +698,191 @@ add_shortcode('woocommernce_gl_donor_cards', function () {
     }
     return ob_get_clean();
 
+});
+
+/**
+ * Displays total donations made using shortcode [gl_donation_total]
+ */
+add_shortcode('gl_donation_total', function () {
+    $gl_app = GLAppConfig::get_instance();
+    $gl_donation_total = $gl_app->get('gl_donation_total');
+
+    if(empty($gl_donation_total)) {
+        $orders = wc_get_orders(array(
+            'date_after' => '2025-09-01',
+            'status' => array('wc-completed', 'wc-processing'),
+        ));
+
+        $gl_donation_total = 0;
+        if (!empty($orders)) {
+            foreach ($orders as $order) {
+                $gl_donation_total += $order->get_total();
+            }
+            $gl_app->set('gl_donation_total', $gl_donation_total);
+        }
+    }
+
+
+	return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$' . number_format($gl_donation_total, 2) . '</span><span class="gl_donation_stats__text">In Donations Made</span></div>';
+});
+
+
+add_shortcode('gl_donation_count', function () {
+
+    $gl_app = GLAppConfig::get_instance();
+    $gl_donation_count = $gl_app->get('gl_donation_count');
+    if (empty($gl_donation_count)) {
+        $orders = wc_get_orders(array(
+            'date_after' => '2025-09-01',
+            'status' => array('wc-completed', 'wc-processing'),
+        ));
+
+        $gl_donation_count = 0;
+        if (!empty($orders)) {
+            foreach ($orders as $order) {
+                foreach ($order->get_items() as $item) {
+                    if ($item->get_subtotal() > 0) {
+                        $gl_donation_count++;
+                    }
+                }
+            }
+            $gl_app->set('gl_donation_count', $gl_donation_count);
+        }
+
+    }
+
+
+    return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">' . $gl_donation_count . '</span><span class="gl_donation_stats__text">Donations Made</span></div>';
+});
+
+
+add_shortcode('gl_max_donation', function () {
+    $gl_app = GLAppConfig::get_instance();
+    $gl_max_donation = $gl_app->get('gl_max_donation');
+
+    if(empty($gl_max_donation)) {
+        $orders = wc_get_orders(array(
+            'date_after' => '2025-09-01',
+            'status' => array('wc-completed', 'wc-processing'),
+        ));
+
+        $gl_max_donation = 0;
+
+        if (!empty($orders)) {
+            foreach ($orders as $order) {
+                $total = $order->get_total();
+                if ($total > $gl_max_donation) {
+                    $gl_max_donation = $total;
+                }
+            }
+            $gl_app->set('$gl_max_donation', $gl_max_donation);
+        }
+    }
+
+
+    return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$' . number_format($gl_max_donation, 2) . '</span><span class="gl_donation_stats__text">Largest Donation</span></div>';
+});
+
+
+
+
+add_shortcode('gl_average_donations', function () {
+    $gl_app = GLAppConfig::get_instance();
+    $gl_donation_count = $gl_app->get('gl_donation_count');
+    $gl_donation_total = $gl_app->get('gl_donation_total');
+
+
+    $gl_average_donations = 0;
+    if(empty($gl_donation_count) || empty($gl_donation_total)) {
+        $orders = wc_get_orders(array(
+            'date_after' => '2025-09-01',
+            'status' => array('wc-completed', 'wc-processing'),
+        ));
+
+        $gl_donation_count = 0;
+        $gl_donation_total = 0;
+        if (!empty($orders)) {
+            if (!empty($orders)) {
+                foreach ($orders as $order) {
+                    $gl_donation_total += $order->get_total();
+                }
+                $gl_app->set('gl_donation_total', $gl_donation_total);
+            }
+
+            $gl_donation_count = 0;
+            foreach ($orders as $order) {
+                foreach ($order->get_items() as $item) {
+                    if ($item->get_subtotal() > 0) {
+                        $gl_donation_count++;
+                    }
+                }
+            }
+            $gl_app->set('gl_donation_count', $gl_donation_count);
+        }
+    }
+    $gl_average_donations = $gl_donation_total / $gl_donation_count;
+
+    return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$' . number_format($gl_average_donations, 0) . '.00</span><span class="gl_donation_stats__text">Average Donation Made</span></div>';
+});
+
+
+add_shortcode('gl_matched_donations', function () {
+    $gl_app = GLAppConfig::get_instance();
+    $gl_matched_donations = $gl_app->get('gl_matched_donations');
+
+    $total = 0;
+    if( empty($gl_matched_donations) ) {
+        global $wpdb;
+        $gl_matched_donations = $wpdb->get_var(
+                $wpdb->prepare(
+                        "SELECT SUM(CAST(meta_value AS UNSIGNED)) 
+             FROM {$wpdb->postmeta} 
+             WHERE meta_key = %s 
+             AND meta_value != ''",
+                'match'
+                )
+        );
+        $gl_app->set('gl_matched_donations', $gl_matched_donations);
+
+    }
+
+    return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$' . number_format($gl_matched_donations, 2) . '</span><span class="gl_donation_stats__text">Matched Donations</span></div>';
+});
+
+add_shortcode('gl_total_raised', function () {
+    $gl_app = GLAppConfig::get_instance();
+    $gl_total_raised = $gl_app->get('gl_total_raised');
+    $gl_matched_donations = $gl_app->get('gl_matched_donations');
+    $gl_donation_total = $gl_app->get('gl_donation_total');
+
+
+    if(empty($gl_total_raised) || empty($gl_matched_donations) || empty($gl_donation_total)) {
+        $orders = wc_get_orders(array(
+                'date_after' => '2025-09-01',
+                'status' => array('wc-completed', 'wc-processing'),
+        ));
+
+        $gl_donation_total = 0;
+        if (!empty($orders)) {
+            foreach ($orders as $order) {
+                $gl_donation_total += $order->get_total();
+            }
+            $gl_app->set('gl_donation_total', $gl_donation_total);
+        }
+
+        global $wpdb;
+        $gl_matched_donations = $wpdb->get_var(
+                $wpdb->prepare(
+                        "SELECT SUM(CAST(meta_value AS UNSIGNED)) 
+             FROM {$wpdb->postmeta} 
+             WHERE meta_key = %s 
+             AND meta_value != ''",
+                        'match'
+                )
+        );
+        $gl_app->set('gl_matched_donations', $gl_matched_donations);
+    }
+    $gl_total_raised = $gl_donation_total + $gl_matched_donations;
+
+    return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$' . number_format($gl_total_raised, 2) . '</span><span class="gl_donation_stats__text">Total Raised</span></div>';
 });

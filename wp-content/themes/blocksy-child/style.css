@@ -6,6 +6,11 @@
  * Text Domain: blocksy
  */
 
+/* --- Override header donation stats spacing --- */
+#header [data-items]>* {
+    margin: var(--margin, 0 30px) !important;
+}
+
 .wp-block-woocommerce-product-price, p.price {
     display: none !important;
 }
@@ -152,4 +157,27 @@ ul.products.columns-1 li:last-child {
 .gl-donor-card__total {
     font-size: 1.0rem;
     font-weight: 700;
+}
+
+
+/* Donation stats formatting */
+.gl_donation_stats {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.1;
+}
+
+.gl_donation_stats__value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--theme-palette-color-1);
+}
+
+.gl_donation_stats__text {
+    font-size: 0.8rem;
+    font-weight: 500;
 }
