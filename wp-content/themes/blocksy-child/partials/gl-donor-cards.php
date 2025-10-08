@@ -4,6 +4,8 @@ $orders = wc_get_orders([
     'status' => ['completed', 'processing', 'on-hold'],
     'limit'  => 30,
     'date_created' => '>=2025-09-01',
+    'orderby' => 'date',
+    'order'   => 'DESC',
 ]);
 
 ?>
