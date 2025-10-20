@@ -820,7 +820,10 @@ add_shortcode('gl_average_donations', function () {
             $gl_app->set('gl_donation_count', $gl_donation_count);
         }
     }
-    $gl_average_donations = $gl_donation_total / $gl_donation_count;
+    if($gl_donation_count > 0) {
+        $gl_average_donations = $gl_donation_total / $gl_donation_count;
+    }
+
 
     return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$' . number_format($gl_average_donations, 0) . '.00</span><span class="gl_donation_stats__text">Average Donation Made</span></div>';
 });
