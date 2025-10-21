@@ -538,7 +538,7 @@ add_filter('woocommerce_checkout_fields', function ($fields) {
  * - format:   "text" (escaped) or "html" (keep ACF formatting)
  * - fallback: Value to show if field is empty
  */
-add_shortcode('gl_acf_display', function ($atts) {
+function gl_acf_display_render( $atts = array() ) {
     $a = shortcode_atts([
             'name'     => '',
             'prefix'   => '',
@@ -593,8 +593,8 @@ add_shortcode('gl_acf_display', function ($atts) {
     }
 
     return $output;
-});
-
+}
+add_shortcode( 'gl_acf_display', 'gl_acf_display_render' );
 
 // Get Woocommerce product description
 /**
@@ -657,7 +657,7 @@ add_shortcode('product_short_description', function ($atts) {
         return '';
     }
 
-    return $product->get_short_description();
+    return '<h5 class="gl_single_product_header">What They Do: </h5>' . $product->get_short_description();
 });
 
 
@@ -888,4 +888,32 @@ add_shortcode('gl_total_raised', function () {
     $gl_total_raised = $gl_donation_total + $gl_matched_donations;
 
     return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$' . number_format($gl_total_raised, 2) . '</span><span class="gl_donation_stats__text">Total Raised</span></div>';
+});
+
+
+/**
+ * Shortcode to display Incentives and Matches sections on single product page
+ * Example shortcode: [gl_incentives_and_matches]
+ */
+add_shortcode('gl_incentives_and_matches', function () {
+
+    $content = '';
+
+    $incentives = gl_acf_display_render(
+        array( 'name' => 'incentives', 'format' => 'html' )
+    );
+    if (!empty($incentives)) {
+        $content .= '<h5 class="gl_single_product_header">Incentives</h5>';
+        $content .= '<div class="gl_incentives">' . $incentives . '</div>';
+    }
+
+    $matches = gl_acf_display_render(
+        array( 'name' => 'match_html', 'format' => 'html' )
+    );
+    if (!empty($matches)) {
+        $content .= '<h5 class="gl_single_product_header">Matches</h5>';
+        $content .= '<div class="gl_matches">' . $matches . '</div>';
+    }
+
+    return $content;
 });
