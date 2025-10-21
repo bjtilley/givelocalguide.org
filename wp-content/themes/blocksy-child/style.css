@@ -181,3 +181,10 @@ ul.products.columns-1 li:last-child {
     font-size: 0.8rem;
     font-weight: 500;
 }
+
+.gl_single_product_header {
+    margin-top: 25px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    color: var(--theme-palette-color-1);
+}
