@@ -186,5 +186,9 @@ ul.products.columns-1 li:last-child {
     margin-top: 25px;
     margin-bottom: 8px;
     text-transform: uppercase;
+
+}
+
+.gl_incentives_header {
     color: var(--theme-palette-color-1);
 }

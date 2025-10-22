@@ -924,3 +924,110 @@ add_shortcode('gl_incentives_and_matches', function () {
 
     return $content;
 });
+
+
+// List of incentives to display on a page
+add_shortcode('gl_incentives_list', function () {
+
+    // Fetch all products by categories
+    $args = array(
+        'post_type'      => 'product',
+        'posts_per_page' => -1,
+        'post_status'    => 'publish',
+        'orderby' => 'name',
+        'order' => 'ASC',
+        'tax_query' => array(
+                array(
+                        'taxonomy' => 'product_cat',
+                        'field'    => 'slug',
+                        'terms'    => array(
+                                'community',
+                                'animals',
+                                'creativity-literacy',
+                                'education',
+                                'environment',
+                                'youth',
+                                'social-justice',
+                                'food-security',
+                                'health-and-wellness',
+                        ),
+                        'operator' => 'IN',
+                        'posts_per_page' => -1,
+                ),
+        ),
+    );
+
+    $content = '';
+    $products_query = new WP_Query( $args );
+    if ( $products_query->have_posts() ) :
+        while ( $products_query->have_posts() ) : $products_query->the_post();
+            global $product;
+
+
+            $incentives = get_field( 'incentives', $product->get_id() );
+            if (!empty($incentives)) {
+                $content .= '<h5 class="wp-block-heading gl_incentives_header">' . get_the_title() . '</h5>';
+                $content .= '<div class="wp-block-list">' . $incentives . '</div>';
+            }
+        endwhile;
+        wp_reset_postdata();
+    endif;
+
+    return $content;
+});
+
+
+// List of matches to display on a page
+add_shortcode('gl_matches_list', function () {
+
+    // Fetch all products by categories
+    $args = array(
+            'post_type'      => 'product',
+            'posts_per_page' => -1,
+            'post_status'    => 'publish',
+            'orderby' => 'name',
+            'order' => 'ASC',
+            'tax_query' => array(
+                    array(
+                            'taxonomy' => 'product_cat',
+                            'field'    => 'slug',
+                            'terms'    => array(
+                                    'community',
+                                    'animals',
+                                    'creativity-literacy',
+                                    'education',
+                                    'environment',
+                                    'youth',
+                                    'social-justice',
+                                    'food-security',
+                                    'health-and-wellness',
+                            ),
+                            'operator' => 'IN',
+                            'posts_per_page' => -1,
+                    ),
+            ),
+    );
+
+    $content = '';
+    $products_query = new WP_Query( $args );
+    if ( $products_query->have_posts() ) :
+        while ( $products_query->have_posts() ) : $products_query->the_post();
+            global $product;
+
+            $matches = get_field( 'match_html', $product->get_id() );
+            if (!empty($matches)) {
+                $content .= '<h5 class="wp-block-heading gl_incentives_header">' . get_the_title() . '</h5>';
+                $content .= '<div class="wp-block-list">';
+                if(strpos($matches, '<ul>') === false) {
+                    $content .= '<ul><li>' . $matches . '</li></ul>';
+                } else {
+                    $content .= $matches;
+                }
+                $content .= '</div>';
+            }
+        endwhile;
+        wp_reset_postdata();
+    endif;
+
+    return $content;
+});
