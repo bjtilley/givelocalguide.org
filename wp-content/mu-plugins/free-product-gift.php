@@ -39,13 +39,22 @@ if (!function_exists('fpg_get_eligible_gifts')) {
                 foreach ($free_product_gifts as $gift_row) {
                     $gift_product_id = isset($gift_row['nonprofit_free_product_gift']) ? intval($gift_row['nonprofit_free_product_gift']) : 0;
                     $gift_threshold = isset($gift_row['nonprofit_gift_threshold']) ? floatval($gift_row['nonprofit_gift_threshold']) : 0;
+                    // New optional max threshold field (admin may leave empty)
+                    $gift_threshold_max = isset($gift_row['nonprofit_gift_threshold_max']) ? floatval($gift_row['nonprofit_gift_threshold_max']) : 0;
 
-                    if ($gift_product_id > 0 && $gift_threshold > 0 && $product_subtotal >= $gift_threshold) {
-                        $eligible_gifts[] = array(
-                            'gift_id' => $gift_product_id,
-                            'threshold' => $gift_threshold,
-                            'parent_product' => $product_id
-                        );
+                    // Only add gift when product subtotal is >= threshold and (if max is set) <= max
+                    if ($gift_product_id > 0 && $gift_threshold > 0) {
+                        $meets_min = ($product_subtotal >= $gift_threshold);
+                        $meets_max = ($gift_threshold_max > 0) ? ($product_subtotal <= $gift_threshold_max) : true;
+
+                        if ($meets_min && $meets_max) {
+                            $eligible_gifts[] = array(
+                                'gift_id' => $gift_product_id,
+                                'threshold' => $gift_threshold,
+                                'threshold_max' => $gift_threshold_max,
+                                'parent_product' => $product_id
+                            );
+                        }
                     }
                 }
             }
@@ -153,6 +162,7 @@ function fpg_check_and_add_free_gifts() {
                         'is_free_gift' => true,
                         'parent_product' => $product_id,
                         'gift_threshold' => $gift_data['threshold'],
+                        'gift_threshold_max' => isset($gift_data['threshold_max']) ? $gift_data['threshold_max'] : 0,
                         'original_price' => 0
                     ));
                     wc_clear_notices(); // Clear any notices to prevent user confusion
@@ -420,7 +430,8 @@ function fpg_check_free_gifts_on_add($cart_item_key, $product_id, $quantity, $va
                 WC()->cart->add_to_cart($gift_id, 1, 0, array(), array(
                     'is_free_gift' => true,
                     'parent_product' => $product_id,
-                    'gift_threshold' => $gift_data['threshold']
+                    'gift_threshold' => $gift_data['threshold'],
+                    'gift_threshold_max' => isset($gift_data['threshold_max']) ? $gift_data['threshold_max'] : 0
                 ));
                 wc_clear_notices(); // Clear any notices to prevent user confusion
             }
@@ -474,7 +485,8 @@ function fpg_check_gifts_on_quantity_update($cart) {
                     WC()->cart->add_to_cart($gift_id, 1, 0, array(), array(
                         'is_free_gift' => true,
                         'parent_product' => $product_id,
-                        'gift_threshold' => $gift_data['threshold']
+                        'gift_threshold' => $gift_data['threshold'],
+                        'gift_threshold_max' => isset($gift_data['threshold_max']) ? $gift_data['threshold_max'] : 0
                     ));
                     wc_clear_notices(); // Clear any notices to prevent user confusion
                 }
@@ -508,4 +520,3 @@ add_action('wp_loaded', function() {
         fpg_immediate_gift_check();
     }
 });
-
