@@ -262,6 +262,30 @@
                     "prepend": "",
                     "append": "",
                     "parent_repeater": "field_68f79645cb81a"
+                },
+                {
+                    "key": "field_68f8ec0b107cc",
+                    "label": "Nonprofit Gift Threshold Max",
+                    "name": "nonprofit_gift_threshold_max",
+                    "aria-label": "",
+                    "type": "number",
+                    "instructions": "",
+                    "required": 0,
+                    "conditional_logic": 0,
+                    "wrapper": {
+                        "width": "",
+                        "class": "",
+                        "id": ""
+                    },
+                    "default_value": "",
+                    "min": "",
+                    "max": "",
+                    "allow_in_bindings": 0,
+                    "placeholder": "",
+                    "step": "",
+                    "prepend": "",
+                    "append": "",
+                    "parent_repeater": "field_68f79645cb81a"
                 }
             ]
         }
@@ -285,5 +309,5 @@
     "description": "",
     "show_in_rest": 0,
     "display_title": "",
-    "modified": 1761141767
+    "modified": 1761143851
 }
