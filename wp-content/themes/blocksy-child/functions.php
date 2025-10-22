@@ -21,6 +21,13 @@ function blocksy_child_scripts() {
 add_action('wp_enqueue_scripts', 'blocksy_child_scripts', 200);
 
 
+// Save ACF JSON locally
+function gl_acf_save_json( $path ) {
+    return get_stylesheet_directory() . '/acf-json';
+}
+add_filter('acf/settings/save_json', 'gl_acf_save_json');
+
+
 // Custom style for WordPress admin
 function custom_admin_styles() {
     wp_enqueue_style( 'custom-admin-css', get_stylesheet_directory_uri() . '/admin-style.css' );
@@ -315,7 +322,7 @@ function replace_cart_subtotal_with_input($product_subtotal, $cart_item, $cart_i
         // Fixed: close the div opening tag so HTML is valid and doesn't bleed into other cells
         $format = '<div class="input-group gl-input-group">'
                 . '<span class="input-group-text gl-input-group-text">$</span>'
-                . '<input type="number" name="cart_price_update[%1$s]" value="%2$.2f" class="price-update-input form-control gl-amount-input" data-cart-item-key="%1$s" inputmode="decimal" step="1" min="5" style="width:100px;" />'
+                . '<input type="number" name="cart_price_update[%1$s]" value="%2$.2f" class="price-update-input form-control gl-amount-input" data-cart-item-key="%1$s" inputmode="decimal" step="1" min="5" style="width:110px;" />'
                 . '</div>';
 
         $input = sprintf(
@@ -903,7 +910,7 @@ add_shortcode('gl_incentives_and_matches', function () {
         array( 'name' => 'incentives', 'format' => 'html' )
     );
     if (!empty($incentives)) {
-        $content .= '<h5 class="gl_single_product_header">Incentives</h5>';
+        $content .= '<h5 class="gl_single_product_header">Incentives:</h5>';
         $content .= '<div class="gl_incentives">' . $incentives . '</div>';
     }
 
@@ -911,7 +918,7 @@ add_shortcode('gl_incentives_and_matches', function () {
         array( 'name' => 'match_html', 'format' => 'html' )
     );
     if (!empty($matches)) {
-        $content .= '<h5 class="gl_single_product_header">Matches</h5>';
+        $content .= '<h5 class="gl_single_product_header">Matches:</h5>';
         $content .= '<div class="gl_matches">' . $matches . '</div>';
     }
 
