@@ -192,3 +192,9 @@ ul.products.columns-1 li:last-child {
 .gl_incentives_header {
     color: var(--theme-palette-color-1);
 }
+
+
+/* disable product images clickable in cart */
+a.ct-media-container {
+    pointer-events: none;
+}
