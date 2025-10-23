@@ -211,7 +211,7 @@ add_action('wp_head', function() {
         text-align: center !important;
         white-space: nowrap !important;
         background-color: #d0bde5 !important;
-        border: 2px solid #52197E !important;
+        border: 1px solid #52197E !important;
         border-right: 0 !important;
         border-radius: var(--theme-form-field-border-radius, 3px) 0 0 var(--theme-form-field-border-radius, 3px) !important;
     }
@@ -231,7 +231,7 @@ add_action('wp_head', function() {
         width: 100% !important;
         max-width: none !important;
         height: inherit !important;
-        border: 2px solid var(--theme-form-field-border-initial-color) !important;
+        border: 1px solid var(--theme-form-field-border-initial-color) !important;
         border-left: 0 !important;
         border-radius: 0 var(--theme-form-field-border-radius, 3px) var(--theme-form-field-border-radius, 3px) 0 !important;
         --theme-form-font-size: 0.9em !important;
@@ -240,6 +240,13 @@ add_action('wp_head', function() {
         --theme-form-field-border-initial-color: var(--quantity-initial-color, var(--theme-button-background-initial-color)) !important;
         --theme-form-field-background-initial-color: transparent !important;
     }
+
+    .woocommerce .quantity input.qty:focus {
+        border-color: var(--theme-palette-color-2);
+        outline: 0;
+        box-shadow: 0 0 0 .25rem rgba(116, 32, 180, 0.15);
+    }
+
 
     /* Button styling */
     .woocommerce div.product form.cart .single_add_to_cart_button,
