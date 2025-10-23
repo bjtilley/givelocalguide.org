@@ -101,7 +101,9 @@ class Custom_Checkout_Fields {
                 $last_name = $order_obj->get_billing_last_name();
                 $email = $order_obj->get_billing_email();
                 $anonymous = get_post_meta($order_id, '_anonymous_donation', true);
-                $anonymous_display = ($anonymous === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
+                $comments = $order_obj->get_customer_note();
+                $custom_fields_actions = new Donation_Report_Actions();
+                $anonymous_display = $custom_fields_actions->get_anonymous_status($anonymous, $comments);
 
                 foreach ($order_obj->get_items() as $item_id => $item) {
                     $product_id = $item->get_product_id();
