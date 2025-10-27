@@ -188,6 +188,27 @@
             "delay": 0
         },
         {
+            "key": "field_68ff6de901d2c",
+            "label": "Drawings",
+            "name": "drawings",
+            "aria-label": "",
+            "type": "wysiwyg",
+            "instructions": "",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "",
+            "allow_in_bindings": 0,
+            "tabs": "all",
+            "toolbar": "full",
+            "media_upload": 1,
+            "delay": 0
+        },
+        {
             "key": "field_68f79645cb81a",
             "label": "Free Product Gifts",
             "name": "free_product_gifts",
@@ -309,5 +330,5 @@
     "description": "",
     "show_in_rest": 0,
     "display_title": "",
-    "modified": 1761143851
+    "modified": 1761570300
 }
