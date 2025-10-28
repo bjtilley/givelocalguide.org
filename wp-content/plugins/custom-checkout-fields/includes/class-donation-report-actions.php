@@ -76,8 +76,7 @@ class Donation_Report_Actions {
                 'from_name' => 'GiveLocal Guide',
                 'to' =>[
                     [
-                        //'email' => $email_fields['company_email'],
-                        'email' => 'bjtilley+nptest1@gmail.com',
+                        'email' => $email_fields['company_email'],
                         'type' => 'to',
                     ]
                 ]
