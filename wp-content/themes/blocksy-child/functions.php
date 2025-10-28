@@ -723,6 +723,7 @@ add_shortcode('gl_donation_total', function () {
 
     if(empty($gl_donation_total)) {
         $orders = wc_get_orders(array(
+            'limit' => -1,
             'date_after' => '2025-09-01',
             'status' => array('wc-completed', 'wc-processing'),
         ));
@@ -747,6 +748,7 @@ add_shortcode('gl_donation_count', function () {
     $gl_donation_count = $gl_app->get('gl_donation_count');
     if (empty($gl_donation_count)) {
         $orders = wc_get_orders(array(
+            'limit' => -1,
             'date_after' => '2025-09-01',
             'status' => array('wc-completed', 'wc-processing'),
         ));
@@ -776,6 +778,7 @@ add_shortcode('gl_max_donation', function () {
 
     if(empty($gl_max_donation)) {
         $orders = wc_get_orders(array(
+            'limit' => -1,
             'date_after' => '2025-09-01',
             'status' => array('wc-completed', 'wc-processing'),
         ));
@@ -809,6 +812,7 @@ add_shortcode('gl_average_donations', function () {
     $gl_average_donations = 0;
     if(empty($gl_donation_count) || empty($gl_donation_total)) {
         $orders = wc_get_orders(array(
+            'limit' => -1,
             'date_after' => '2025-09-01',
             'status' => array('wc-completed', 'wc-processing'),
         ));
@@ -875,6 +879,7 @@ add_shortcode('gl_total_raised', function () {
 
     if(empty($gl_total_raised) || empty($gl_matched_donations) || empty($gl_donation_total)) {
         $orders = wc_get_orders(array(
+                'limit' => -1,
                 'date_after' => '2025-09-01',
                 'status' => array('wc-completed', 'wc-processing'),
         ));
