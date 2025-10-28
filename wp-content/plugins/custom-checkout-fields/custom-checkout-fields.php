@@ -105,6 +105,10 @@ class Custom_Checkout_Fields {
                 $custom_fields_actions = new Donation_Report_Actions();
                 $anonymous_display = $custom_fields_actions->get_anonymous_status($anonymous, $comments);
 
+                // New incentives option retrieval
+                $incentives = get_post_meta($order_id, '_incentives_option', true);
+                $incentives_display = ($incentives === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
+
                 foreach ($order_obj->get_items() as $item_id => $item) {
                     $product_id = $item->get_product_id();
 
@@ -129,6 +133,7 @@ class Custom_Checkout_Fields {
                         'last_name' => $last_name,
                         'email' => $email,
                         'anonymous_display' => $anonymous_display,
+                        'incentives_display' => $incentives_display,
                         'email_sent_display' => $email_sent_display,
                         'company_email' => function_exists('get_field') ? get_field('company_email', $product_id) : '',
                         'product_name' => $item->get_name(),
@@ -213,6 +218,7 @@ class Custom_Checkout_Fields {
                             <?php echo $get_sortable_header('first_name', __('First Name', 'custom-checkout-fields')); ?>
                             <?php echo $get_sortable_header('last_name', __('Last Name', 'custom-checkout-fields')); ?>
                             <?php echo $get_sortable_header('email', __('Email Address', 'custom-checkout-fields')); ?>
+                            <th class="manage-column column-incentives_option" scope="col"><?php echo esc_html__('Incentives', 'custom-checkout-fields'); ?></th>
                             <th class="manage-column column-anonymous_donation" scope="col"><?php echo esc_html__('Anonymous Donation', 'custom-checkout-fields'); ?></th>
                             <th class="manage-column column-email_sent" scope="col"><?php echo esc_html__('Email Sent', 'custom-checkout-fields'); ?></th>
                             <th class="manage-column column-company_email" scope="col"><?php echo esc_html__('Company Email', 'custom-checkout-fields'); ?></th>
@@ -243,6 +249,7 @@ class Custom_Checkout_Fields {
                                     <td class="column-first_name"><?php echo esc_html($row['first_name']); ?></td>
                                     <td class="column-last_name"><?php echo esc_html($row['last_name']); ?></td>
                                     <td class="column-email"><?php echo esc_html($row['email']); ?></td>
+                                    <td class="column-incentives_option"><?php echo esc_html($row['incentives_display']); ?></td>
                                     <td class="column-anonymous_donation"><?php echo esc_html($row['anonymous_display']); ?></td>
                                     <td class="column-email_sent"><?php echo esc_html($row['email_sent_display']); ?></td>
                                     <td class="column-company_email"><?php echo esc_html($row['company_email']); ?></td>
@@ -255,7 +262,7 @@ class Custom_Checkout_Fields {
                         } else {
                         ?>
                         <tr class="no-items">
-                            <td class="colspanchange" colspan="12"><?php echo esc_html__('No donations found.', 'custom-checkout-fields'); ?></td>
+                            <td class="colspanchange" colspan="13"><?php echo esc_html__('No donations found.', 'custom-checkout-fields'); ?></td>
                         </tr>
                         <?php
                         }
@@ -421,7 +428,7 @@ document.addEventListener('DOMContentLoaded', function() {
         $value = $checkout->get_value('anonymous_donation');
         $description = __('If you wish to donate anonymously, please select Yes below, otherwise click No.', 'custom-checkout-fields');
 
-        echo '<div class="anonymous-donation-field form-row-wide">';
+        echo '<div class="anonymous-donation-field form-row-wide' . '">';
         echo '<h5 class="anonymous-donation-label">' . esc_html__('Anonymous Donation?', 'custom-checkout-fields') . '</h5>';
         echo '<p class="description anonymous-donation-desc">' . esc_html($description) . '</p>';
 
@@ -438,6 +445,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
         echo '</div>'; // .woocommerce-input-wrapper
         echo '</div>'; // .anonymous-donation-field
+
+        // --- New incentives_option field (matches anonymous_donation formatting) ---
+        $inc_value = $checkout->get_value('incentives_option');
+        $inc_description = __('If applicable, would you like to opt in to receive any donation incentives offered by your selected nonprofit(s)? Click yes below, otherwise click no.', 'custom-checkout-fields');
+
+        echo '<div class="incentives-option-field form-row-wide">';
+        echo '<h5 class="incentives-option-label">' . esc_html__('Incentives', 'custom-checkout-fields') . '</h5>';
+        echo '<p class="description incentives-option-desc">' . esc_html($inc_description) . '</p>';
+
+        echo '<div class="woocommerce-input-wrapper">';
+
+        $inc_checked_no = ($inc_value === 'no') ? 'checked' : '';
+        echo '<label class="incentives-option"><input type="radio" name="incentives_option" value="no" ' . $inc_checked_no . ' aria-required="true" required="required" /> <span>' . esc_html__('No', 'custom-checkout-fields') . '</span></label>';
+
+        $inc_checked_yes = ($inc_value === 'yes') ? 'checked' : '';
+        echo '<label class="incentives-option"><input type="radio" name="incentives_option" value="yes" ' . $inc_checked_yes . ' aria-required="true" required="required" /> <span>' . esc_html__('Yes', 'custom-checkout-fields') . '</span></label>';
+
+        echo '</div>'; // .woocommerce-input-wrapper
+        echo '</div>'; // .incentives-option-field
     }
 
     /**
@@ -448,6 +474,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // so the default template won't show the '*' next to the inputs. Validate server-side here.
         if (empty($_POST['anonymous_donation']) || !in_array($_POST['anonymous_donation'], array('yes','no'), true)) {
             wc_add_notice(__('Please indicate whether you would like your donation to be anonymous.', 'custom-checkout-fields'), 'error');
+        }
+
+        // incentives_option is required and must be either 'yes' or 'no'
+        if (empty($_POST['incentives_option']) || !in_array($_POST['incentives_option'], array('yes','no'), true)) {
+            wc_add_notice(__('Please indicate whether you would like to opt into incentives for your donation.', 'custom-checkout-fields'), 'error');
         }
     }
 
@@ -462,6 +493,13 @@ document.addEventListener('DOMContentLoaded', function() {
             // If the value wasn't provided (shouldn't happen due to validation), make sure we don't persist a default value.
             // Remove any existing meta to avoid accidentally pre-checking an option on a subsequent load.
             delete_post_meta($order_id, '_anonymous_donation');
+        }
+
+        // Save incentives_option the same way as anonymous_donation
+        if (isset($_POST['incentives_option']) && in_array($_POST['incentives_option'], array('yes','no'), true)) {
+            update_post_meta($order_id, '_incentives_option', sanitize_text_field($_POST['incentives_option']));
+        } else {
+            delete_post_meta($order_id, '_incentives_option');
         }
     }
 
@@ -545,9 +583,36 @@ document.addEventListener('DOMContentLoaded', function() {
         .anonymous-donation-field .woocommerce-input-wrapper .anonymous-option input[type="radio"] { width: 20px !important; height: 20px !important; margin: 0 !important; vertical-align: middle !important; flex: 0 0 auto; }
         .anonymous-donation-field .woocommerce-input-wrapper .anonymous-option span { display: inline-block !important; vertical-align: middle !important; margin: 0 !important; }
 
+        /* Incentives field styles (match anonymous) */
+        .incentives-option-field .incentives-option-desc {
+            font-size: 20px !important;
+            font-weight: 600 !important;
+            margin: 0 0 18px 0 !important;
+            color: inherit !important;
+        }
+        .incentives-option-field abbr.required,
+        .incentives-option-field .required {
+            display: none !important;
+        }
+        .incentives-option-field .incentives-option-desc::after,
+        .incentives-option-field .incentives-option-desc::before,
+        .incentives-option-field .incentives-option-label::after,
+        .incentives-option-field .incentives-option-label::before,
+        .incentives-option-field .incentives-option::after,
+        .incentives-option-field .incentives-option::before {
+            content: none !important;
+            display: none !important;
+            visibility: hidden !important;
+        }
+        .incentives-option-field .woocommerce-input-wrapper { display: flex !important; gap: 12px !important; align-items: center !important; flex-wrap: nowrap !important; }
+        .incentives-option-field .woocommerce-input-wrapper .incentives-option { display: inline-flex !important; align-items: center !important; gap: 8px !important; font-size: 20px !important; margin: 0 !important; padding: 0 !important; line-height: 1 !important; white-space: nowrap !important; }
+        .incentives-option-field .woocommerce-input-wrapper .incentives-option input[type="radio"] { width: 20px !important; height: 20px !important; margin: 0 !important; vertical-align: middle !important; flex: 0 0 auto; }
+        .incentives-option-field .woocommerce-input-wrapper .incentives-option span { display: inline-block !important; vertical-align: middle !important; margin: 0 !important; }
+
         /* Ensure spacing on mobile stacks if needed */
         @media (max-width: 480px) {
             .anonymous-donation-field .woocommerce-input-wrapper { flex-direction: column; align-items: flex-start; }
+            .incentives-option-field .woocommerce-input-wrapper { flex-direction: column; align-items: flex-start; }
         }
         </style>
         <?php
@@ -568,33 +633,37 @@ document.addEventListener('DOMContentLoaded', function() {
         <script>
         (function(){
             function cleanAsterisks() {
-                var container = document.querySelector('.anonymous-donation-field');
-                if (!container) return;
+                var containers = document.querySelectorAll('.anonymous-donation-field, .incentives-option-field');
+                if (!containers) return;
 
-                // Remove elements commonly used for required markers
-                var selectors = ['abbr.required', '.required', '.woocommerce-req', '.woocommerce-required'];
-                selectors.forEach(function(sel){
-                    var els = container.querySelectorAll(sel);
-                    els.forEach(function(el){ el.parentNode && el.parentNode.removeChild(el); });
-                });
+                containers.forEach(function(container){
+                    if (!container) return;
 
-                // Remove any immediate text nodes that consist solely of whitespace plus asterisks
-                var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
-                var nodesToRemove = [];
-                while(walker.nextNode()){
-                    var txt = walker.currentNode.nodeValue || '';
-                    if (/^\s*\*+\s*(?:\.{0,3})?$/.test(txt)) {
-                        nodesToRemove.push(walker.currentNode);
+                    // Remove elements commonly used for required markers
+                    var selectors = ['abbr.required', '.required', '.woocommerce-req', '.woocommerce-required'];
+                    selectors.forEach(function(sel){
+                        var els = container.querySelectorAll(sel);
+                        els.forEach(function(el){ el.parentNode && el.parentNode.removeChild(el); });
+                    });
+
+                    // Remove any immediate text nodes that consist solely of whitespace plus asterisks
+                    var walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+                    var nodesToRemove = [];
+                    while(walker.nextNode()){
+                        var txt = walker.currentNode.nodeValue || '';
+                        if (/^\s*\*+\s*(?:\.{0,3})?$/.test(txt)) {
+                            nodesToRemove.push(walker.currentNode);
+                        }
                     }
-                }
-                nodesToRemove.forEach(function(n){ n.parentNode && n.parentNode.removeChild(n); });
+                    nodesToRemove.forEach(function(n){ n.parentNode && n.parentNode.removeChild(n); });
 
-                // Also remove any trailing '*' characters appended to description text nodes
-                var desc = container.querySelector('.anonymous-donation-desc');
-                if (desc) {
-                    // Trim trailing asterisks from the textContent
-                    desc.textContent = desc.textContent.replace(/\*+\s*$/,'').trim();
-                }
+                    // Also remove any trailing '*' characters appended to description text nodes
+                    var desc = container.querySelector('.anonymous-donation-desc, .incentives-option-desc');
+                    if (desc) {
+                        // Trim trailing asterisks from the textContent
+                        desc.textContent = desc.textContent.replace(/\*+\s*$/,'').trim();
+                    }
+                });
 
             }
 
@@ -633,21 +702,34 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             function attachClientValidation() {
-                var container = document.querySelector('.anonymous-donation-field');
-                if (!container) return;
+                var anonContainer = document.querySelector('.anonymous-donation-field');
+                var incContainer = document.querySelector('.incentives-option-field');
+                if (!anonContainer && !incContainer) return;
                 var checkoutForm = document.querySelector('form.checkout');
                 if (!checkoutForm) return;
 
-                // On submit, ensure a radio is selected
+                // On submit, ensure both radios are selected
                 checkoutForm.addEventListener('submit', function(e){
                     // If WooCommerce's checkout script has already prevented native submit and performed AJAX,
                     // this still runs and we can prevent further processing by stopping the event.
-                    var checked = container.querySelector('input[name="anonymous_donation"]:checked');
-                    if (!checked) {
-                        e.preventDefault();
-                        e.stopImmediatePropagation();
-                        showCheckoutError('Please indicate whether you would like your donation to be anonymous.');
-                        return false;
+                    if (anonContainer) {
+                        var checkedAnon = anonContainer.querySelector('input[name="anonymous_donation"]:checked');
+                        if (!checkedAnon) {
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            showCheckoutError('Please indicate whether you would like your donation to be anonymous.');
+                            return false;
+                        }
+                    }
+
+                    if (incContainer) {
+                        var checkedInc = incContainer.querySelector('input[name="incentives_option"]:checked');
+                        if (!checkedInc) {
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            showCheckoutError('Please indicate whether you would like to opt into incentives for your donation.');
+                            return false;
+                        }
                     }
 
                     return true;
@@ -657,12 +739,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 var placeButtons = document.querySelectorAll('#place_order, button#place_order, input#place_order');
                 placeButtons.forEach(function(btn){
                     btn.addEventListener('click', function(e){
-                        var checked = container.querySelector('input[name="anonymous_donation"]:checked');
-                        if (!checked) {
-                            e.preventDefault();
-                            e.stopImmediatePropagation();
-                            showCheckoutError('Please indicate whether you would like your donation to be anonymous.');
-                            return false;
+                        if (anonContainer) {
+                            var checkedAnon = anonContainer.querySelector('input[name="anonymous_donation"]:checked');
+                            if (!checkedAnon) {
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                showCheckoutError('Please indicate whether you would like your donation to be anonymous.');
+                                return false;
+                            }
+                        }
+                        if (incContainer) {
+                            var checkedInc = incContainer.querySelector('input[name="incentives_option"]:checked');
+                            if (!checkedInc) {
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                showCheckoutError('Please indicate whether you would like to opt into incentives for your donation.');
+                                return false;
+                            }
                         }
                         return true;
                     }, { capture: true });
@@ -673,12 +766,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     var t = e.target || e.srcElement;
                     if (!t) return;
                     if (t.id === 'place_order' || t.matches && (t.matches('button#place_order') || t.matches('input#place_order'))) {
-                        var checked = container.querySelector('input[name="anonymous_donation"]:checked');
-                        if (!checked) {
-                            e.preventDefault();
-                            e.stopImmediatePropagation();
-                            showCheckoutError('Please indicate whether you would like your donation to be anonymous.');
-                            return false;
+                        if (anonContainer) {
+                            var checkedAnon = anonContainer.querySelector('input[name="anonymous_donation"]:checked');
+                            if (!checkedAnon) {
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                showCheckoutError('Please indicate whether you would like your donation to be anonymous.');
+                                return false;
+                            }
+                        }
+                        if (incContainer) {
+                            var checkedInc = incContainer.querySelector('input[name="incentives_option"]:checked');
+                            if (!checkedInc) {
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                showCheckoutError('Please indicate whether you would like to opt into incentives for your donation.');
+                                return false;
+                            }
                         }
                     }
                 }, true);

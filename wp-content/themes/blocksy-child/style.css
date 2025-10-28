@@ -44,7 +44,7 @@ a.wpmenucart-contents.empty-wpmenucart-visible:hover {
     border: 2px solid var(--theme-palette-color-1);
 }
 
-.anonymous-donation-field {
+.anonymous-donation-field, .incentives-option-field {
     margin-bottom: 40px;
 }
 
