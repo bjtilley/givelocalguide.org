@@ -198,3 +198,11 @@ ul.products.columns-1 li:last-child {
 a.ct-media-container {
     pointer-events: none;
 }
+
+.gl_payment_table, .gl_payment_table td, .gl_payment_table th  {
+    border: none;
+}
+
+.gl_payment_table td {
+    padding: 0 10px 0 10px;
+}
