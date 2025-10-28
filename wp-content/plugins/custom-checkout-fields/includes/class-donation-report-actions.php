@@ -76,7 +76,8 @@ class Donation_Report_Actions {
                 'from_name' => 'GiveLocal Guide',
                 'to' =>[
                     [
-                        'email' => $email_fields['company_email'],
+                        //'email' => $email_fields['company_email'],
+                        'email' => 'bjtilley+nptest1@gmail.com',
                         'type' => 'to',
                     ]
                 ]
@@ -155,6 +156,9 @@ class Donation_Report_Actions {
         // Anonymous status for order item
         $anonymous = get_post_meta($order_id, '_anonymous_donation', true);
         $fields['anonymous_status'] = $this->get_anonymous_status($anonymous, $fields['order_comments']);
+        // Incetives option for order item
+        $incentives = get_post_meta($order_id, '_incentives_option', true);
+        $fields['incentives_option'] = ($incentives === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
         
         return $fields;
     }
