@@ -934,6 +934,14 @@ add_shortcode('gl_incentives_and_matches', function () {
         $content .= '<div class="gl_matches">' . $matches . '</div>';
     }
 
+    $drawings = gl_acf_display_render(
+        array( 'name' => 'drawings', 'format' => 'html' )
+    );
+    if (!empty($drawings)) {
+        $content .= '<h5 class="gl_single_product_header">Drawings:</h5>';
+        $content .= '<div class="gl_drawings">' . $drawings . '</div>';
+    }
+
     return $content;
 });
 
