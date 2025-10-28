@@ -419,10 +419,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // required asterisk rendering; validation is handled server-side.
 
         $value = $checkout->get_value('anonymous_donation');
-        $description = __('If you wish to donate anonymously, please select the radio button below to yes?', 'custom-checkout-fields');
+        $description = __('If you wish to donate anonymously, please select Yes below, otherwise click No.', 'custom-checkout-fields');
 
         echo '<div class="anonymous-donation-field form-row-wide">';
-        echo '<h5 class="anonymous-donation-label">' . esc_html__('Anonymous?', 'custom-checkout-fields') . '</h5>';
+        echo '<h5 class="anonymous-donation-label">' . esc_html__('Anonymous Donation?', 'custom-checkout-fields') . '</h5>';
         echo '<p class="description anonymous-donation-desc">' . esc_html($description) . '</p>';
 
         echo '<div class="woocommerce-input-wrapper">';
