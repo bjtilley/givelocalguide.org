@@ -107,7 +107,13 @@ class Custom_Checkout_Fields {
 
                 // New incentives option retrieval
                 $incentives = get_post_meta($order_id, '_incentives_option', true);
-                $incentives_display = ($incentives === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
+                if ($incentives === 'yes') {
+                    $incentives_display = __('Yes', 'custom-checkout-fields');
+                } elseif ($incentives === 'no') {
+                    $incentives_display = __('No', 'custom-checkout-fields');
+                } else {
+                    $incentives_display = __('', 'custom-checkout-fields');
+                }
 
                 foreach ($order_obj->get_items() as $item_id => $item) {
                     $product_id = $item->get_product_id();

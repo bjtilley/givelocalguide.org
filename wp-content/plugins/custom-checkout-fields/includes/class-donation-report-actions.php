@@ -157,7 +157,13 @@ class Donation_Report_Actions {
         $fields['anonymous_status'] = $this->get_anonymous_status($anonymous, $fields['order_comments']);
         // Incetives option for order item
         $incentives = get_post_meta($order_id, '_incentives_option', true);
-        $fields['incentives_option'] = ($incentives === 'yes') ? __('Yes', 'custom-checkout-fields') : __('No', 'custom-checkout-fields');
+        if ($incentives === 'yes') {
+            $fields['incentives_option'] = __('Yes', 'custom-checkout-fields');
+        } elseif ($incentives === 'no') {
+            $fields['incentives_option'] = __('No', 'custom-checkout-fields');
+        } else {
+            $fields['incentives_option'] = __('Unknown', 'custom-checkout-fields');
+        }
         
         return $fields;
     }
