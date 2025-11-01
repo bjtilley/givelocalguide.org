@@ -1153,3 +1153,184 @@ add_action('init', function () {
     }
 });
 
+
+// shortcode for product total sales
+add_shortcode('gl_nonprofit_total_sales', function ($atts) {
+    // Extract attributes with defaults
+    $atts = shortcode_atts(array(
+        'product_id' => 0,
+    ), $atts, 'gl_nonprofit_total_sales');
+
+    // Get product ID - if not provided in shortcode, try to get from global product
+    $product_id = intval($atts['product_id']);
+
+    if (!$product_id) {
+        global $product;
+        if ($product && is_a($product, 'WC_Product')) {
+            $product_id = $product->get_id();
+        }
+    }
+
+    // Return early if no product ID found
+    if (!$product_id) {
+        return '';
+    }
+
+    // Get total sales amount using WooCommerce standards
+    $total_sales = gl_get_product_total_sales_amount($product_id);
+
+    // Format and return the sales amount
+
+    if($total_sales > 0) {
+        return sprintf(
+                '<h6 class="gl__raised_so_far">$%s Raised so far</h6>',
+                number_format($total_sales, 2)
+        );
+    } else {
+        return '';
+    }
+
+});
+
+/**
+ * Get total sales amount for a product using WooCommerce standards
+ *
+ * @param int $product_id The product ID
+ * @return float Total sales amount
+ */
+function gl_get_product_total_sales_amount($product_id) {
+    global $wpdb;
+
+    if (!$product_id) {
+        return 0;
+    }
+
+    // First, try using WooCommerce's built-in HPOS (High-Performance Order Storage) if available
+    if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil') &&
+        method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') &&
+        \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled()) {
+
+        // Use HPOS tables
+        $total_sales = $wpdb->get_var($wpdb->prepare("
+            SELECT COALESCE(SUM(order_item_meta.meta_value), 0) as total_sales
+            FROM {$wpdb->prefix}woocommerce_order_items as order_items
+            INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta as order_item_meta_product 
+                ON order_items.order_item_id = order_item_meta_product.order_item_id
+                AND order_item_meta_product.meta_key = '_product_id'
+                AND order_item_meta_product.meta_value = %d
+            INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta as order_item_meta 
+                ON order_items.order_item_id = order_item_meta.order_item_id
+                AND order_item_meta.meta_key = '_line_total'
+            INNER JOIN {$wpdb->prefix}wc_orders as orders 
+                ON order_items.order_id = orders.id
+            WHERE order_items.order_item_type = 'line_item'
+                AND orders.status IN ('wc-completed', 'wc-processing', 'wc-on-hold')
+        ", $product_id));
+
+    } else {
+        // Use legacy post-based orders
+        $total_sales = $wpdb->get_var($wpdb->prepare("
+            SELECT COALESCE(SUM(order_item_meta.meta_value), 0) as total_sales
+            FROM {$wpdb->prefix}woocommerce_order_items as order_items
+            INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta as order_item_meta_product 
+                ON order_items.order_item_id = order_item_meta_product.order_item_id
+                AND order_item_meta_product.meta_key = '_product_id'
+                AND order_item_meta_product.meta_value = %d
+            INNER JOIN {$wpdb->prefix}woocommerce_order_itemmeta as order_item_meta 
+                ON order_items.order_item_id = order_item_meta.order_item_id
+                AND order_item_meta.meta_key = '_line_total'
+            INNER JOIN {$wpdb->prefix}posts as posts 
+                ON order_items.order_id = posts.ID
+            WHERE order_items.order_item_type = 'line_item'
+                AND posts.post_type = 'shop_order'
+                AND posts.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold')
+        ", $product_id));
+    }
+
+    return floatval($total_sales);
+}
+
+/**
+ * Debug function to check product sales data
+ * Usage: Add [gl_debug_product_sales product_id="123"] to any page (only for admins)
+ */
+add_shortcode('gl_debug_product_sales', function ($atts) {
+    // Only show for administrators
+    if (!current_user_can('manage_options')) {
+        return '';
+    }
+
+    $atts = shortcode_atts(array(
+        'product_id' => 0,
+    ), $atts, 'gl_debug_product_sales');
+
+    $product_id = intval($atts['product_id']);
+
+    if (!$product_id) {
+        global $product;
+        if ($product && is_a($product, 'WC_Product')) {
+            $product_id = $product->get_id();
+        }
+    }
+
+    if (!$product_id) {
+        return '<div style="background: #fff; padding: 15px; border: 1px solid #ccc;">No product ID found</div>';
+    }
+
+    global $wpdb;
+
+    // Check if HPOS is enabled
+    $hpos_enabled = false;
+    if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil') &&
+        method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') &&
+        \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled()) {
+        $hpos_enabled = true;
+    }
+
+    // Get all order items for this product
+    $items = $wpdb->get_results($wpdb->prepare("
+        SELECT 
+            order_items.order_item_id,
+            order_items.order_id,
+            product_meta.meta_value as product_id,
+            total_meta.meta_value as line_total
+        FROM {$wpdb->prefix}woocommerce_order_items as order_items
+        LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta as product_meta 
+            ON order_items.order_item_id = product_meta.order_item_id
+            AND product_meta.meta_key = '_product_id'
+        LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta as total_meta 
+            ON order_items.order_item_id = total_meta.order_item_id
+            AND total_meta.meta_key = '_line_total'
+        WHERE order_items.order_item_type = 'line_item'
+            AND product_meta.meta_value = %d
+        LIMIT 10
+    ", $product_id));
+
+    $total = gl_get_product_total_sales_amount($product_id);
+
+    $output = '<div style="background: #fff; padding: 15px; border: 1px solid #ccc; margin: 20px 0; font-family: monospace; font-size: 12px;">';
+    $output .= '<h3>Debug: Product Sales Data</h3>';
+    $output .= '<p><strong>Product ID:</strong> ' . $product_id . '</p>';
+    $output .= '<p><strong>HPOS Enabled:</strong> ' . ($hpos_enabled ? 'Yes' : 'No') . '</p>';
+    $output .= '<p><strong>Total Sales Amount:</strong> ' . wc_price($total) . '</p>';
+    $output .= '<p><strong>Sample Order Items (max 10):</strong></p>';
+
+    if ($items) {
+        $output .= '<table style="border-collapse: collapse; width: 100%;">';
+        $output .= '<tr><th style="border: 1px solid #ccc; padding: 5px;">Order Item ID</th><th style="border: 1px solid #ccc; padding: 5px;">Order ID</th><th style="border: 1px solid #ccc; padding: 5px;">Line Total</th></tr>';
+        foreach ($items as $item) {
+            $output .= '<tr>';
+            $output .= '<td style="border: 1px solid #ccc; padding: 5px;">' . $item->order_item_id . '</td>';
+            $output .= '<td style="border: 1px solid #ccc; padding: 5px;">' . $item->order_id . '</td>';
+            $output .= '<td style="border: 1px solid #ccc; padding: 5px;">' . wc_price($item->line_total) . '</td>';
+            $output .= '</tr>';
+        }
+        $output .= '</table>';
+    } else {
+        $output .= '<p>No order items found for this product.</p>';
+    }
+
+    $output .= '</div>';
+
+    return $output;
+});
