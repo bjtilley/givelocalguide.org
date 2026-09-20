@@ -515,8 +515,29 @@ function fpg_immediate_gift_check() {
     fpg_check_and_add_free_gifts();
 }
 add_action('woocommerce_cart_updated', 'fpg_immediate_gift_check');
-add_action('wp_loaded', function() {
-    if (!is_admin() && WC()->cart && !WC()->cart->is_empty()) {
+
+add_action('wp_loaded', function () {
+    // Only run on front end and when WooCommerce is available
+    if (
+            is_admin() ||
+            ! class_exists('WooCommerce') ||
+            ! function_exists('WC')
+    ) {
+        return;
+    }
+
+    $wc = WC();
+
+    // Some requests may not have a session/cart yet
+    if (
+            empty($wc) ||
+            empty($wc->cart) ||
+            ! is_object($wc->cart)
+    ) {
+        return;
+    }
+
+    if ( ! $wc->cart->is_empty() ) {
         fpg_immediate_gift_check();
     }
 });

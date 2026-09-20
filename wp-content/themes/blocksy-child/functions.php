@@ -714,10 +714,17 @@ add_shortcode('woocommernce_gl_donor_cards', function () {
 
 });
 
+// TEMP: freeze campaign donation stats (no wc_get_orders / SQL).
+$gl_donation_stats_use_static = true;
+
 /**
  * Displays total donations made using shortcode [gl_donation_total]
  */
-add_shortcode('gl_donation_total', function () {
+add_shortcode('gl_donation_total', function () use ($gl_donation_stats_use_static) {
+    if ($gl_donation_stats_use_static) {
+        return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$417,495.00</span><span class="gl_donation_stats__text">In Donations Made</span></div>';
+    }
+
     $gl_app = GLAppConfig::get_instance();
     $gl_donation_total = $gl_app->get('gl_donation_total');
 
@@ -742,7 +749,10 @@ add_shortcode('gl_donation_total', function () {
 });
 
 
-add_shortcode('gl_donation_count', function () {
+add_shortcode('gl_donation_count', function () use ($gl_donation_stats_use_static) {
+    if ($gl_donation_stats_use_static) {
+        return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">2412</span><span class="gl_donation_stats__text">Donations Made</span></div>';
+    }
 
     $gl_app = GLAppConfig::get_instance();
     $gl_donation_count = $gl_app->get('gl_donation_count');
@@ -772,7 +782,11 @@ add_shortcode('gl_donation_count', function () {
 });
 
 
-add_shortcode('gl_max_donation', function () {
+add_shortcode('gl_max_donation', function () use ($gl_donation_stats_use_static) {
+    if ($gl_donation_stats_use_static) {
+        return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$75,000.00</span><span class="gl_donation_stats__text">Largest Donation</span></div>';
+    }
+
     $gl_app = GLAppConfig::get_instance();
     $gl_max_donation = $gl_app->get('gl_max_donation');
 
@@ -803,7 +817,11 @@ add_shortcode('gl_max_donation', function () {
 
 
 
-add_shortcode('gl_average_donations', function () {
+add_shortcode('gl_average_donations', function () use ($gl_donation_stats_use_static) {
+    if ($gl_donation_stats_use_static) {
+        return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$173.00</span><span class="gl_donation_stats__text">Average Donation Made</span></div>';
+    }
+
     $gl_app = GLAppConfig::get_instance();
     $gl_donation_count = $gl_app->get('gl_donation_count');
     $gl_donation_total = $gl_app->get('gl_donation_total');
@@ -847,7 +865,11 @@ add_shortcode('gl_average_donations', function () {
 });
 
 
-add_shortcode('gl_matched_donations', function () {
+add_shortcode('gl_matched_donations', function () use ($gl_donation_stats_use_static) {
+    if ($gl_donation_stats_use_static) {
+        return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$145,168.00</span><span class="gl_donation_stats__text">Matched Donations</span></div>';
+    }
+
     $gl_app = GLAppConfig::get_instance();
     $gl_matched_donations = $gl_app->get('gl_matched_donations');
 
@@ -870,7 +892,11 @@ add_shortcode('gl_matched_donations', function () {
     return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$' . number_format($gl_matched_donations, 2) . '</span><span class="gl_donation_stats__text">Matched Donations</span></div>';
 });
 
-add_shortcode('gl_total_raised', function () {
+add_shortcode('gl_total_raised', function () use ($gl_donation_stats_use_static) {
+    if ($gl_donation_stats_use_static) {
+        return '<div class="gl_donation_stats"><span class="gl_donation_stats__value">$562,663.00</span><span class="gl_donation_stats__text">Total Raised</span></div>';
+    }
+
     $gl_app = GLAppConfig::get_instance();
     $gl_total_raised = $gl_app->get('gl_total_raised');
     $gl_matched_donations = $gl_app->get('gl_matched_donations');
@@ -1334,3 +1360,75 @@ add_shortcode('gl_debug_product_sales', function ($atts) {
 
     return $output;
 });
+
+
+// Add Matched donation amount per product
+add_shortcode('gl_matched_nonprofit_donation_amount', function ($atts) {
+    // Extract attributes with defaults
+    $atts = shortcode_atts(array(
+            'product_id' => 0,
+    ), $atts, 'gl_nonprofit_total_sales');
+
+    // Get product ID - if not provided in shortcode, try to get from global product
+    $product_id = intval($atts['product_id']);
+
+    if (!$product_id) {
+        global $product;
+        if ($product && is_a($product, 'WC_Product')) {
+            $product_id = $product->get_id();
+        }
+    }
+
+    // Return early if no product ID found
+    if (!$product_id) {
+        return '';
+    }
+
+    $matched_total = gl_acf_display_render(
+        array( 'name' => 'match', 'format' => 'text', 'id' => $product_id)
+    );
+    $matched_total = intval($matched_total);
+
+    if(!empty($matched_total) && $matched_total > 0) {
+        return sprintf(
+                '<h6 class="gl__raised_so_far">$%s Matched so far</h6>',
+                number_format($matched_total, 2)
+        );
+    } else {
+        return '';
+    }
+});
+
+function disable_search_request( $query_vars ) {
+    if ( is_admin() ) {
+        return $query_vars;
+    }
+
+    if ( isset( $query_vars['s'] ) ) {
+        unset( $query_vars['s'] );
+    }
+
+    return $query_vars;
+}
+add_filter( 'request', 'disable_search_request', 10 );
+
+function disable_frontend_search( $query ) {
+    if ( is_admin() || ! $query->is_main_query() ) {
+        return;
+    }
+
+    if ( $query->is_search() ) {
+        // Neutralize the search
+        $query->is_search = false;
+        $query->set( 's', '' );
+
+        // Option 1: 404
+        $query->set_404();
+        status_header( 404 );
+        nocache_headers();
+    }
+}
+add_action( 'parse_query', 'disable_frontend_search' );
+
+
+
