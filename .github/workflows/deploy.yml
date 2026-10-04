@@ -1,0 +1,52 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.DROPLET_SSH_PRIVATE_KEY }}
+
+      - name: Pin Droplet host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "${{ secrets.DROPLET_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Rsync custom WordPress paths
+        env:
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_WP_CONTENT_PATH: ${{ vars.DROPLET_WP_CONTENT_PATH }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DROPLET_USER}" ] || [ -z "${DROPLET_HOST}" ] || [ -z "${DROPLET_WP_CONTENT_PATH}" ]; then
+            echo "Missing DROPLET_USER, DROPLET_HOST, or DROPLET_WP_CONTENT_PATH."
+            exit 1
+          fi
+
+          rsync -avz --delete \
+            --exclude .git \
+            --exclude .DS_Store \
+            "wp-content/themes/blocksy-child/" \
+            "${DROPLET_USER}@${DROPLET_HOST}:${DROPLET_WP_CONTENT_PATH}/themes/blocksy-child/"
+
+          rsync -avz --delete \
+            --exclude .git \
+            --exclude .DS_Store \
+            "wp-content/mu-plugins/" \
+            "${DROPLET_USER}@${DROPLET_HOST}:${DROPLET_WP_CONTENT_PATH}/mu-plugins/"
+
+          rsync -avz --delete \
+            --exclude .git \
+            --exclude .DS_Store \
+            "wp-content/plugins/custom-checkout-fields/" \
+            "${DROPLET_USER}@${DROPLET_HOST}:${DROPLET_WP_CONTENT_PATH}/plugins/custom-checkout-fields/"

@@ -117,6 +117,8 @@ Thumbs.db
 !.gitignore
 !.editorconfig
 !.phpcs.xml.dist
+!.github/
+!.github/**
 !README.md
 !CHANGELOG.md
 !composer.json
@@ -137,12 +139,14 @@ Thumbs.db
 
 # track these mu-plugins, plugins, and themes
 # add your own entries here
-!wp-content/mu-plugins/free-product-gift.php
-!wp-content/mu-plugins/free-voucher-gift.php
-!wp-content/mu-plugins/cart-calculation-fixes.php
-!wp-content/mu-plugins/free-gifts-cart-notice.php
+!wp-content/mu-plugins/
+!wp-content/mu-plugins/**
 !wp-content/plugins/custom-checkout-fields/
+!wp-content/plugins/custom-checkout-fields/**
 # !wp-content/plugins/example-plugin/
 # !wp-content/themes/example-theme/
-!wp-content/themes/blocksy/
 !wp-content/themes/blocksy-child/
+!wp-content/themes/blocksy-child/**
+
+# re-ignore junk that directory un-ignores would otherwise include
+**/.DS_Store
