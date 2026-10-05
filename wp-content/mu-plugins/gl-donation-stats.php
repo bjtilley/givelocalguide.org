@@ -49,26 +49,31 @@ function gl_donation_stats_hpos_enabled()
         && \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
 }
 
-function gl_donation_stats_fallback()
+/**
+ * Zeros used only when the cache file and the aggregate queries both fail.
+ *
+ * @return array
+ */
+function gl_donation_stats_empty()
 {
     return array(
         'generated_at' => null,
-        'source' => 'fallback',
+        'source' => 'unavailable',
         'hpos' => null,
         'campaign' => array(
-            'donation_total' => 417495.00,
-            'donation_count' => 2412,
-            'max_donation' => 75000.00,
-            'average_donation' => 173,
-            'matched_donations' => 145168.00,
-            'total_raised' => 562663.00,
+            'donation_total' => 0,
+            'donation_count' => 0,
+            'max_donation' => 0,
+            'average_donation' => 0,
+            'matched_donations' => 0,
+            'total_raised' => 0,
         ),
         'products' => array(),
     );
 }
 
 /**
- * Read the cache once per request. Missing or unreadable files use the frozen figures.
+ * Read the cache once per request. A missing or invalid file is rebuilt from SQL.
  *
  * @return array
  */
@@ -80,10 +85,24 @@ function gl_donation_stats_read()
         return $stats;
     }
 
+    $decoded = gl_donation_stats_read_file();
+    if (null !== $decoded) {
+        $stats = $decoded;
+        return $stats;
+    }
+
+    $stats = gl_donation_stats_backup_from_sql();
+    return $stats;
+}
+
+/**
+ * @return array|null
+ */
+function gl_donation_stats_read_file()
+{
     $path = gl_donation_stats_file_path();
     if ('' === $path || !is_readable($path)) {
-        $stats = gl_donation_stats_fallback();
-        return $stats;
+        return null;
     }
 
     $raw = file_get_contents($path);
@@ -94,8 +113,7 @@ function gl_donation_stats_read()
         || !is_array($decoded['campaign'])
         || !array_key_exists('donation_total', $decoded['campaign'])
     ) {
-        $stats = gl_donation_stats_fallback();
-        return $stats;
+        return null;
     }
 
     $decoded['source'] = 'file';
@@ -103,8 +121,39 @@ function gl_donation_stats_read()
         $decoded['products'] = array();
     }
 
-    $stats = $decoded;
-    return $stats;
+    return $decoded;
+}
+
+/**
+ * Run the same aggregates as the cron job and write the cache when they succeed.
+ * A recent query failure returns zeros without querying again.
+ *
+ * @return array
+ */
+function gl_donation_stats_backup_from_sql()
+{
+    if (get_transient('gl_donation_stats_refresh_failed') || !class_exists('WooCommerce')) {
+        return gl_donation_stats_empty();
+    }
+
+    $payload = gl_donation_stats_collect();
+    if (null === $payload) {
+        set_transient('gl_donation_stats_refresh_failed', 1, 5 * MINUTE_IN_SECONDS);
+        return gl_donation_stats_empty();
+    }
+
+    delete_transient('gl_donation_stats_refresh_failed');
+    $directory = gl_donation_stats_ensure_storage();
+    if ('' !== $directory) {
+        gl_donation_stats_write($directory, $payload);
+    }
+
+    $payload['source'] = 'sql';
+    if (!isset($payload['products']) || !is_array($payload['products'])) {
+        $payload['products'] = array();
+    }
+
+    return $payload;
 }
 
 function gl_donation_stats_campaign_value($key)
