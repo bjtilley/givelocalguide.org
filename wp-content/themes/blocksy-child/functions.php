@@ -27,6 +27,23 @@ function gl_acf_save_json( $path ) {
 }
 add_filter('acf/settings/save_json', 'gl_acf_save_json');
 
+// Site-wide checkout fee coverage settings (percentage, line item label, explanation).
+function gl_register_fee_coverage_options_page() {
+    if (!function_exists('acf_add_options_page')) {
+        return;
+    }
+
+    acf_add_options_page(array(
+        'page_title' => 'Checkout Fee Coverage',
+        'menu_title' => 'Fee Coverage',
+        'menu_slug'  => 'fee-coverage',
+        'capability' => 'manage_woocommerce',
+        'redirect'   => false,
+        'position'   => 57,
+    ));
+}
+add_action('acf/init', 'gl_register_fee_coverage_options_page');
+
 
 // Custom style for WordPress admin
 function custom_admin_styles() {

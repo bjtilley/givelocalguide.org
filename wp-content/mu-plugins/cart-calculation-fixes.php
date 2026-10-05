@@ -79,7 +79,13 @@ function ccf_cart_totals($total) {
             }
         }
     }
-    
+
+    // Fees are calculated before this filter runs. Include them so an optional
+    // checkout fee is part of the charged total. Tax and shipping stay excluded.
+    if (method_exists(WC()->cart, 'get_fee_total')) {
+        $real_total += (float) WC()->cart->get_fee_total();
+    }
+
     return $real_total;
 }
 add_filter('woocommerce_calculated_total', 'ccf_cart_totals', 99, 1);

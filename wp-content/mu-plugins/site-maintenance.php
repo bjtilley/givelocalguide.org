@@ -1,4 +1,5 @@
 <?php
+
 /**
  * Plugin Name: Disable Purchases (Catalog Mode)
  * Description: Visitors can browse products and categories; add-to-cart and checkout are blocked.
@@ -8,19 +9,23 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-function gl_purchases_closed_user_is_exempt() {
+function gl_purchases_closed_user_is_exempt()
+{
     return is_user_logged_in() && current_user_can('manage_options');
 }
 
-function gl_purchases_are_closed() {
-    return !gl_purchases_closed_user_is_exempt();
+function gl_purchases_are_closed()
+{
+    return false;
 }
 
-function gl_purchases_closed_message() {
+function gl_purchases_closed_message()
+{
     return __('Donations are currently closed. You can still browse nonprofits.', 'givelocalguide');
 }
 
-function gl_purchases_closed_redirect_url() {
+function gl_purchases_closed_redirect_url()
+{
     return home_url('/thank-you/');
 }
 
