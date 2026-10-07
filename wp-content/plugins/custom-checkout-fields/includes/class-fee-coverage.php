@@ -28,7 +28,6 @@ class GL_Fee_Coverage {
         add_action('woocommerce_checkout_create_order_fee_item', array($this, 'set_fee_nontaxable'), 10, 2);
         add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_admin_order_meta'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_assets'));
-        add_action('wp_head', array($this, 'print_styles'));
     }
 
     /**
@@ -36,27 +35,33 @@ class GL_Fee_Coverage {
      * WooCommerce prints fee rows just above this hook.
      */
     public function render_checkbox() {
-        if (!$this->should_offer()) {
+        if (!$this->should_offer() || !WC()->cart) {
             return;
         }
 
+        $label = $this->get_label();
         $explanation = $this->get_explanation();
-        if ($explanation === '') {
-            $explanation = $this->get_label();
-        }
+        $amount = $this->calculate_amount(WC()->cart);
+        $opted = $this->is_opted_in();
         ?>
-        <tr class="cover-transaction-fee">
+        <tr class="cover-transaction-fee<?php echo $opted ? ' is-opted-in' : ''; ?>">
             <th colspan="2">
-                <label for="cover_transaction_fee">
+                <label class="cover-transaction-fee__card" for="cover_transaction_fee">
                     <input
                         type="checkbox"
                         name="cover_transaction_fee"
                         id="cover_transaction_fee"
                         value="yes"
                         autocomplete="off"
-                        <?php checked($this->is_opted_in()); ?>
+                        <?php checked($opted); ?>
                     />
-                    <span><?php echo esc_html($explanation); ?></span>
+                    <span class="cover-transaction-fee__copy">
+                        <span class="cover-transaction-fee__title"><?php echo esc_html($label); ?></span>
+                        <?php if ($explanation !== '') : ?>
+                            <span class="cover-transaction-fee__text"><?php echo esc_html($explanation); ?></span>
+                        <?php endif; ?>
+                    </span>
+                    <span class="cover-transaction-fee__amount">+<?php echo wp_kses_post(wc_price($amount)); ?></span>
                 </label>
             </th>
         </tr>
@@ -167,43 +172,29 @@ class GL_Fee_Coverage {
             return;
         }
 
-        $script = plugin_dir_path(dirname(__FILE__)) . 'assets/js/fee-coverage.js';
+        $plugin_file = dirname(__FILE__) . '/../custom-checkout-fields.php';
+        $style = plugin_dir_path($plugin_file) . 'assets/css/checkout-fields.css';
+        if (file_exists($style)) {
+            wp_enqueue_style(
+                'gl-checkout-fields',
+                plugins_url('assets/css/checkout-fields.css', $plugin_file),
+                array(),
+                (string) filemtime($style)
+            );
+        }
+
+        $script = plugin_dir_path($plugin_file) . 'assets/js/fee-coverage.js';
         if (!file_exists($script)) {
             return;
         }
 
         wp_enqueue_script(
             'gl-fee-coverage',
-            plugins_url('assets/js/fee-coverage.js', dirname(__FILE__) . '/../custom-checkout-fields.php'),
+            plugins_url('assets/js/fee-coverage.js', $plugin_file),
             array('jquery'),
             (string) filemtime($script),
             true
         );
-    }
-
-    public function print_styles() {
-        if (!$this->is_checkout_page()) {
-            return;
-        }
-        ?>
-        <style>
-            .woocommerce-checkout-review-order-table .cover-transaction-fee th {
-                font-weight: 400;
-                text-align: left;
-                padding-top: 12px;
-            }
-            .woocommerce-checkout-review-order-table .cover-transaction-fee label {
-                display: flex;
-                gap: 8px;
-                align-items: flex-start;
-                cursor: pointer;
-            }
-            .woocommerce-checkout-review-order-table .cover-transaction-fee input {
-                margin-top: 0.2em;
-                flex: 0 0 auto;
-            }
-        </style>
-        <?php
     }
 
     /**
