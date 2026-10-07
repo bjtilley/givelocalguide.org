@@ -73,7 +73,41 @@ function gl_donation_stats_empty()
 }
 
 /**
+ * Local Docker has no cron runner, so the cache file is never written.
+ *
+ * @return bool
+ */
+function gl_donation_stats_is_local()
+{
+    return function_exists('wp_get_environment_type') && 'local' === wp_get_environment_type();
+}
+
+/**
+ * Fixed campaign totals for local development. Production reads the cache file.
+ *
+ * @return array
+ */
+function gl_donation_stats_placeholders()
+{
+    return array(
+        'generated_at' => null,
+        'source' => 'local',
+        'hpos' => null,
+        'campaign' => array(
+            'donation_total' => 417495,
+            'donation_count' => 2412,
+            'max_donation' => 75000,
+            'average_donation' => 173,
+            'matched_donations' => 145168,
+            'total_raised' => 562663,
+        ),
+        'products' => array(),
+    );
+}
+
+/**
  * Read the cache once per request. A missing or invalid file is rebuilt from SQL.
+ * Local environments return placeholders and do not open the file or query.
  *
  * @return array
  */
@@ -82,6 +116,11 @@ function gl_donation_stats_read()
     static $stats = null;
 
     if (null !== $stats) {
+        return $stats;
+    }
+
+    if (gl_donation_stats_is_local()) {
+        $stats = gl_donation_stats_placeholders();
         return $stats;
     }
 
@@ -212,6 +251,10 @@ function gl_donation_stats_product_total($product_id)
 }
 
 add_shortcode('gl_donation_total', function () {
+    if (wp_doing_ajax()) {
+        return '';
+    }
+
     return gl_donation_stats_card(
         gl_donation_stats_money(gl_donation_stats_campaign_value('donation_total')),
         'In Donations Made'
@@ -219,6 +262,10 @@ add_shortcode('gl_donation_total', function () {
 });
 
 add_shortcode('gl_donation_count', function () {
+    if (wp_doing_ajax()) {
+        return '';
+    }
+
     return gl_donation_stats_card(
         (string) (int) gl_donation_stats_campaign_value('donation_count'),
         'Donations Made'
@@ -226,6 +273,10 @@ add_shortcode('gl_donation_count', function () {
 });
 
 add_shortcode('gl_max_donation', function () {
+    if (wp_doing_ajax()) {
+        return '';
+    }
+
     return gl_donation_stats_card(
         gl_donation_stats_money(gl_donation_stats_campaign_value('max_donation')),
         'Largest Donation'
@@ -233,6 +284,10 @@ add_shortcode('gl_max_donation', function () {
 });
 
 add_shortcode('gl_average_donations', function () {
+    if (wp_doing_ajax()) {
+        return '';
+    }
+
     $average = (float) gl_donation_stats_campaign_value('average_donation');
     return gl_donation_stats_card(
         '$' . number_format($average, 0) . '.00',
@@ -241,6 +296,10 @@ add_shortcode('gl_average_donations', function () {
 });
 
 add_shortcode('gl_matched_donations', function () {
+    if (wp_doing_ajax()) {
+        return '';
+    }
+
     return gl_donation_stats_card(
         gl_donation_stats_money(gl_donation_stats_campaign_value('matched_donations')),
         'Matched Donations'
@@ -248,6 +307,10 @@ add_shortcode('gl_matched_donations', function () {
 });
 
 add_shortcode('gl_total_raised', function () {
+    if (wp_doing_ajax()) {
+        return '';
+    }
+
     return gl_donation_stats_card(
         gl_donation_stats_money(gl_donation_stats_campaign_value('total_raised')),
         'Total Raised'
