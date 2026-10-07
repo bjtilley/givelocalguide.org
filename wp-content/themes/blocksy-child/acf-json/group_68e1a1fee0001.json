@@ -1,0 +1,91 @@
+{
+    "key": "group_68e1a1fee0001",
+    "title": "Checkout Fee Coverage",
+    "fields": [
+        {
+            "key": "field_68e1a1fee0002",
+            "label": "Percentage",
+            "name": "cover_fee_percent",
+            "aria-label": "",
+            "type": "number",
+            "instructions": "Percent of the donation total added when a donor opts in. Use 0 to hide the checkbox.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": 2,
+            "min": 0,
+            "max": "",
+            "allow_in_bindings": 0,
+            "placeholder": "",
+            "step": "0.01",
+            "prepend": "",
+            "append": "%"
+        },
+        {
+            "key": "field_68e1a1fee0003",
+            "label": "Line item label",
+            "name": "cover_fee_label",
+            "aria-label": "",
+            "type": "text",
+            "instructions": "Shown on the order and sent to Authorize.net as the line item name. Maximum 31 characters.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "Card fee coverage",
+            "maxlength": 31,
+            "allow_in_bindings": 0,
+            "placeholder": "",
+            "prepend": "",
+            "append": ""
+        },
+        {
+            "key": "field_68e1a1fee0004",
+            "label": "Explanation",
+            "name": "cover_fee_explanation",
+            "aria-label": "",
+            "type": "textarea",
+            "instructions": "Shown next to the checkbox on checkout. This sentence is not updated automatically if you change the percentage.",
+            "required": 0,
+            "conditional_logic": 0,
+            "wrapper": {
+                "width": "",
+                "class": "",
+                "id": ""
+            },
+            "default_value": "I'd like to add 2% to help cover the credit card transaction fees.",
+            "maxlength": "",
+            "allow_in_bindings": 0,
+            "rows": 3,
+            "placeholder": "",
+            "new_lines": ""
+        }
+    ],
+    "location": [
+        [
+            {
+                "param": "options_page",
+                "operator": "==",
+                "value": "fee-coverage"
+            }
+        ]
+    ],
+    "menu_order": 0,
+    "position": "normal",
+    "style": "default",
+    "label_placement": "top",
+    "instruction_placement": "label",
+    "hide_on_screen": "",
+    "active": true,
+    "description": "",
+    "show_in_rest": 0,
+    "display_title": "",
+    "modified": 1759627320
+}

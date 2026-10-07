@@ -122,3 +122,34 @@ Then **Variables** (same Actions page, **Variables** tab, not Secrets) → **New
 - `DROPLET_WP_CONTENT_PATH` — absolute `wp-content` path on the Droplet
 
 Workflow: `.github/workflows/deploy.yml`.
+
+## Pull from DigitalOcean (local)
+
+Run these from the repo root. They copy the Droplet into the matching local folders and leave local files that are not on the server in place.
+
+```bash
+rsync -avz --progress \
+  -e "ssh -i ~/.ssh/id_rsa_bjtilley" \
+  root@143.244.165.219:/var/www/givelocalguide.org/wp-content/plugins/ \
+  wp-content/plugins/
+
+rsync -avz --progress \
+  -e "ssh -i ~/.ssh/id_rsa_bjtilley" \
+  root@143.244.165.219:/var/www/givelocalguide.org/wp-content/themes/blocksy/ \
+  wp-content/themes/blocksy/
+
+rsync -avz --progress \
+  -e "ssh -i ~/.ssh/id_rsa_bjtilley" \
+  root@143.244.165.219:/var/www/givelocalguide.org/wp-content/uploads/ \
+  wp-content/uploads/
+```
+
+`wp-content/plugins/custom-checkout-fields/` is tracked in git and deployed back to the Droplet. The plugins command above will replace that local folder with the server copy. Skip it with:
+
+```bash
+rsync -avz --progress \
+  --exclude 'custom-checkout-fields/' \
+  -e "ssh -i ~/.ssh/id_rsa_bjtilley" \
+  root@143.244.165.219:/var/www/givelocalguide.org/wp-content/plugins/ \
+  wp-content/plugins/
+```

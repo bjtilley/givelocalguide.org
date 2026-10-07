@@ -8,5 +8,6 @@ if (!defined('ABSPATH')) {
 // Load all required class files for the plugin
 require_once __DIR__ . '/class-donation-report-actions.php';
 require_once __DIR__ . '/class-email-template-engine.php';
+require_once __DIR__ . '/class-fee-coverage.php';
 // Add more require_once lines as you add more classes
 
