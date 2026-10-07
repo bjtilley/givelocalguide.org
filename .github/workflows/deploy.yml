@@ -2,11 +2,23 @@ name: Deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Dry run
+        type: boolean
+        default: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Require master branch
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/master" ]; then
+            echo "This workflow only deploys master. Selected ref: ${GITHUB_REF}"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -26,6 +38,7 @@ jobs:
           DROPLET_USER: ${{ secrets.DROPLET_USER }}
           DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
           DROPLET_WP_CONTENT_PATH: ${{ vars.DROPLET_WP_CONTENT_PATH }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           if [ -z "${DROPLET_USER}" ] || [ -z "${DROPLET_HOST}" ] || [ -z "${DROPLET_WP_CONTENT_PATH}" ]; then
@@ -33,20 +46,20 @@ jobs:
             exit 1
           fi
 
-          rsync -avz --delete \
-            --exclude .git \
-            --exclude .DS_Store \
+          rsync_flags=(-avz --delete --exclude .git --exclude .DS_Store)
+          if [ "${DRY_RUN}" = "true" ]; then
+            rsync_flags+=(--dry-run)
+            echo "Dry run: rsync will not write to the Droplet."
+          fi
+
+          rsync "${rsync_flags[@]}" \
             "wp-content/themes/blocksy-child/" \
             "${DROPLET_USER}@${DROPLET_HOST}:${DROPLET_WP_CONTENT_PATH}/themes/blocksy-child/"
 
-          rsync -avz --delete \
-            --exclude .git \
-            --exclude .DS_Store \
+          rsync "${rsync_flags[@]}" \
             "wp-content/mu-plugins/" \
             "${DROPLET_USER}@${DROPLET_HOST}:${DROPLET_WP_CONTENT_PATH}/mu-plugins/"
 
-          rsync -avz --delete \
-            --exclude .git \
-            --exclude .DS_Store \
+          rsync "${rsync_flags[@]}" \
             "wp-content/plugins/custom-checkout-fields/" \
             "${DROPLET_USER}@${DROPLET_HOST}:${DROPLET_WP_CONTENT_PATH}/plugins/custom-checkout-fields/"

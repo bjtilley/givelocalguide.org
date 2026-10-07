@@ -36,7 +36,7 @@ GitHub Actions rsyncs **only** these paths to the Droplet:
 
 WordPress core, the Blocksy parent theme, other plugins, uploads, and MySQL stay on the server and are updated in WP admin. Do not edit those three git-owned folders through WP admin — it would fight git. Parent Blocksy is not in this repo; keep it installed on the Droplet.
 
-Remote destination is the Actions variable `DROPLET_WP_CONTENT_PATH` (the Droplet’s `wp-content` directory). The workflow does not run on push. Deploy from **Actions** → **Deploy** → **Run workflow**.
+Remote destination is the Actions variable `DROPLET_WP_CONTENT_PATH` (the Droplet’s `wp-content` directory). The workflow does not run on push. Deploy from **Actions** → **Deploy** → **Run workflow**, and choose branch **master**. A run from any other branch fails before rsync. Check **Dry run** to preview changes without writing to the Droplet. Leave it unchecked to deploy.
 
 ### Who creates the `deploy` user
 
