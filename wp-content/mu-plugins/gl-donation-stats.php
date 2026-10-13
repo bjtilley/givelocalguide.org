@@ -614,10 +614,14 @@ function gl_donation_stats_collect()
 
     $wpdb->last_error = '';
     $matched = $wpdb->get_var($wpdb->prepare(
-        "SELECT SUM(CAST(meta_value AS UNSIGNED))
-         FROM {$wpdb->postmeta}
-         WHERE meta_key = %s
-           AND meta_value != ''",
+        "SELECT SUM(CAST(product_match.meta_value AS UNSIGNED))
+         FROM {$wpdb->postmeta} AS product_match
+         INNER JOIN {$wpdb->posts} AS products
+             ON products.ID = product_match.post_id
+         WHERE product_match.meta_key = %s
+           AND product_match.meta_value != ''
+           AND products.post_type = 'product'
+           AND products.post_status = 'publish'",
         'match'
     ));
     if ('' !== $wpdb->last_error) {
@@ -677,16 +681,32 @@ function gl_donation_stats_order_totals_sql($hpos, $cutoff_local, $cutoff_gmt)
 {
     global $wpdb;
 
+    $items = $wpdb->prefix . 'woocommerce_order_items';
+    $itemmeta = $wpdb->prefix . 'woocommerce_order_itemmeta';
+
     if ($hpos) {
         $orders = $wpdb->prefix . 'wc_orders';
 
         return $wpdb->prepare(
-            "SELECT COALESCE(SUM(total_amount), 0) AS donation_total,
-                    COALESCE(MAX(total_amount), 0) AS max_donation
-             FROM {$orders}
-             WHERE type = 'shop_order'
-               AND status IN ('wc-completed', 'wc-processing')
-               AND date_created_gmt >= %s",
+            "SELECT COALESCE(SUM(orders.total_amount), 0) AS donation_total,
+                    COALESCE(MAX(orders.total_amount), 0) AS max_donation
+             FROM {$orders} AS orders
+             WHERE orders.type = 'shop_order'
+               AND orders.status IN ('wc-completed', 'wc-processing')
+               AND orders.date_created_gmt >= %s
+               AND EXISTS (
+                   SELECT 1
+                   FROM {$items} AS order_items
+                   INNER JOIN {$itemmeta} AS line_product
+                       ON order_items.order_item_id = line_product.order_item_id
+                      AND line_product.meta_key = '_product_id'
+                   INNER JOIN {$wpdb->posts} AS products
+                       ON products.ID = CAST(line_product.meta_value AS UNSIGNED)
+                      AND products.post_type = 'product'
+                      AND products.post_status = 'publish'
+                   WHERE order_items.order_id = orders.id
+                     AND order_items.order_item_type = 'line_item'
+               )",
             $cutoff_gmt
         );
     }
@@ -700,7 +720,20 @@ function gl_donation_stats_order_totals_sql($hpos, $cutoff_local, $cutoff_gmt)
             AND order_total.meta_key = '_order_total'
          WHERE posts.post_type = 'shop_order'
            AND posts.post_status IN ('wc-completed', 'wc-processing')
-           AND posts.post_date >= %s",
+           AND posts.post_date >= %s
+           AND EXISTS (
+               SELECT 1
+               FROM {$items} AS order_items
+               INNER JOIN {$itemmeta} AS line_product
+                   ON order_items.order_item_id = line_product.order_item_id
+                  AND line_product.meta_key = '_product_id'
+               INNER JOIN {$wpdb->posts} AS products
+                   ON products.ID = CAST(line_product.meta_value AS UNSIGNED)
+                  AND products.post_type = 'product'
+                  AND products.post_status = 'publish'
+               WHERE order_items.order_id = posts.ID
+                 AND order_items.order_item_type = 'line_item'
+           )",
         $cutoff_local
     );
 }
@@ -721,6 +754,13 @@ function gl_donation_stats_donation_count_sql($hpos, $cutoff_local, $cutoff_gmt)
              INNER JOIN {$itemmeta} AS line_subtotal
                  ON order_items.order_item_id = line_subtotal.order_item_id
                 AND line_subtotal.meta_key = '_line_subtotal'
+             INNER JOIN {$itemmeta} AS line_product
+                 ON order_items.order_item_id = line_product.order_item_id
+                AND line_product.meta_key = '_product_id'
+             INNER JOIN {$wpdb->posts} AS products
+                 ON products.ID = CAST(line_product.meta_value AS UNSIGNED)
+                AND products.post_type = 'product'
+                AND products.post_status = 'publish'
              INNER JOIN {$orders} AS orders
                  ON order_items.order_id = orders.id
              WHERE order_items.order_item_type = 'line_item'
@@ -738,6 +778,13 @@ function gl_donation_stats_donation_count_sql($hpos, $cutoff_local, $cutoff_gmt)
          INNER JOIN {$itemmeta} AS line_subtotal
              ON order_items.order_item_id = line_subtotal.order_item_id
             AND line_subtotal.meta_key = '_line_subtotal'
+         INNER JOIN {$itemmeta} AS line_product
+             ON order_items.order_item_id = line_product.order_item_id
+            AND line_product.meta_key = '_product_id'
+         INNER JOIN {$wpdb->posts} AS products
+             ON products.ID = CAST(line_product.meta_value AS UNSIGNED)
+            AND products.post_type = 'product'
+            AND products.post_status = 'publish'
          INNER JOIN {$wpdb->posts} AS posts
              ON order_items.order_id = posts.ID
          WHERE order_items.order_item_type = 'line_item'
@@ -766,6 +813,10 @@ function gl_donation_stats_product_totals_sql($hpos, $cutoff_local, $cutoff_gmt)
              INNER JOIN {$itemmeta} AS order_item_meta_product
                  ON order_items.order_item_id = order_item_meta_product.order_item_id
                 AND order_item_meta_product.meta_key = '_product_id'
+             INNER JOIN {$wpdb->posts} AS products
+                 ON products.ID = CAST(order_item_meta_product.meta_value AS UNSIGNED)
+                AND products.post_type = 'product'
+                AND products.post_status = 'publish'
              INNER JOIN {$itemmeta} AS order_item_meta
                  ON order_items.order_item_id = order_item_meta.order_item_id
                 AND order_item_meta.meta_key = '_line_total'
@@ -786,6 +837,10 @@ function gl_donation_stats_product_totals_sql($hpos, $cutoff_local, $cutoff_gmt)
          INNER JOIN {$itemmeta} AS order_item_meta_product
              ON order_items.order_item_id = order_item_meta_product.order_item_id
             AND order_item_meta_product.meta_key = '_product_id'
+         INNER JOIN {$wpdb->posts} AS products
+             ON products.ID = CAST(order_item_meta_product.meta_value AS UNSIGNED)
+            AND products.post_type = 'product'
+            AND products.post_status = 'publish'
          INNER JOIN {$itemmeta} AS order_item_meta
              ON order_items.order_item_id = order_item_meta.order_item_id
             AND order_item_meta.meta_key = '_line_total'
