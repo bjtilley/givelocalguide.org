@@ -10,13 +10,113 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Campaign orders created on or after this local time are included.
- * Statuses: wc-completed, wc-processing.
+ * Orders created on or after this local time are included in every aggregate.
+ * Falls back to 2025-09-01 when the Donation Stats start date is missing or invalid.
+ *
+ * @return string
  */
 function gl_donation_stats_cutoff_local()
 {
-    return '2025-09-01 00:00:00';
+    $fallback = '2025-09-01 00:00:00';
+
+    if (!function_exists('get_field')) {
+        return $fallback;
+    }
+
+    $date = get_field('donation_stats_start_date', 'option');
+    if (!is_string($date)) {
+        return $fallback;
+    }
+
+    $date = trim($date);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return $fallback;
+    }
+
+    $parts = explode('-', $date);
+    if (!checkdate((int) $parts[1], (int) $parts[2], (int) $parts[0])) {
+        return $fallback;
+    }
+
+    return $date . ' 00:00:00';
 }
+
+/**
+ * Options page and date field that set the cutoff for all donation stats.
+ */
+function gl_donation_stats_register_acf()
+{
+    if (!function_exists('acf_add_options_page') || !function_exists('acf_add_local_field_group')) {
+        return;
+    }
+
+    acf_add_options_page(array(
+        'page_title' => 'Donation Stats',
+        'menu_title' => 'Donation Stats',
+        'menu_slug'  => 'donation-stats',
+        'capability' => 'manage_woocommerce',
+        'redirect'   => false,
+        'position'   => 58,
+    ));
+
+    acf_add_local_field_group(array(
+        'key' => 'group_gl_donation_stats',
+        'title' => 'Donation Stats',
+        'fields' => array(
+            array(
+                'key' => 'field_gl_donation_stats_start_date',
+                'label' => 'Start date',
+                'name' => 'donation_stats_start_date',
+                'type' => 'date_picker',
+                'instructions' => 'Orders created on this date or later are included in donation totals, counts, and per-product amounts.',
+                'required' => 0,
+                'display_format' => 'F j, Y',
+                'return_format' => 'Y-m-d',
+                'first_day' => 0,
+                'default_value' => '2025-09-01',
+            ),
+        ),
+        'location' => array(
+            array(
+                array(
+                    'param' => 'options_page',
+                    'operator' => '==',
+                    'value' => 'donation-stats',
+                ),
+            ),
+        ),
+        'position' => 'normal',
+        'style' => 'default',
+        'label_placement' => 'top',
+        'instruction_placement' => 'label',
+        'active' => true,
+    ));
+}
+add_action('acf/init', 'gl_donation_stats_register_acf');
+
+/**
+ * Rebuild the cache as soon as the start date is saved.
+ *
+ * @param int|string $post_id
+ */
+function gl_donation_stats_on_options_save($post_id)
+{
+    if ('options' !== $post_id && 'option' !== $post_id) {
+        return;
+    }
+
+    if (
+        !isset($_POST['acf'])
+        || !is_array($_POST['acf'])
+        || !array_key_exists('field_gl_donation_stats_start_date', $_POST['acf'])
+    ) {
+        return;
+    }
+
+    delete_transient('gl_donation_stats_refresh_failed');
+    wp_schedule_single_event(time(), 'gl_refresh_donation_stats');
+}
+add_action('acf/save_post', 'gl_donation_stats_on_options_save', 20);
 
 function gl_donation_stats_directory()
 {
@@ -106,7 +206,7 @@ function gl_donation_stats_placeholders()
 }
 
 /**
- * Read the cache once per request. A missing or invalid file is rebuilt from SQL.
+ * Read the cache once per request. A missing, invalid, or stale-cutoff file is rebuilt from SQL.
  * Local environments return placeholders and do not open the file or query.
  *
  * @return array
@@ -125,13 +225,28 @@ function gl_donation_stats_read()
     }
 
     $decoded = gl_donation_stats_read_file();
-    if (null !== $decoded) {
+    if (null !== $decoded && gl_donation_stats_cache_matches_cutoff($decoded)) {
         $stats = $decoded;
         return $stats;
     }
 
     $stats = gl_donation_stats_backup_from_sql();
     return $stats;
+}
+
+/**
+ * A cache file built for a different start date is stale.
+ *
+ * @param array $decoded
+ * @return bool
+ */
+function gl_donation_stats_cache_matches_cutoff($decoded)
+{
+    if (!isset($decoded['cutoff']) || !is_string($decoded['cutoff'])) {
+        return false;
+    }
+
+    return $decoded['cutoff'] === gl_donation_stats_cutoff_local();
 }
 
 /**
@@ -365,7 +480,9 @@ add_shortcode('gl_debug_product_sales', function ($atts) {
     $output = '<div style="background: #fff; padding: 15px; border: 1px solid #ccc; margin: 20px 0; font-family: monospace; font-size: 12px;">';
     $output .= '<h3>Debug: Product Sales Data</h3>';
     $output .= '<p><strong>Product ID:</strong> ' . esc_html((string) $product_id) . '</p>';
+    $cutoff = !empty($stats['cutoff']) ? $stats['cutoff'] : gl_donation_stats_cutoff_local();
     $output .= '<p><strong>Generated:</strong> ' . esc_html($generated) . '</p>';
+    $output .= '<p><strong>Start date:</strong> ' . esc_html($cutoff) . '</p>';
     $output .= '<p><strong>HPOS Enabled:</strong> ' . esc_html($hpos_label) . '</p>';
     $output .= '<p><strong>Total Sales Amount:</strong> ' . wp_kses_post($total_label) . '</p>';
     $output .= '<p>Totals are read from the donation stats cache.</p>';
@@ -509,7 +626,7 @@ function gl_donation_stats_collect()
     }
 
     $wpdb->last_error = '';
-    $product_rows = $wpdb->get_results(gl_donation_stats_product_totals_sql($hpos));
+    $product_rows = $wpdb->get_results(gl_donation_stats_product_totals_sql($hpos, $cutoff_local, $cutoff_gmt));
     if (!is_array($product_rows) || '' !== $wpdb->last_error) {
         gl_donation_stats_log_query_error();
         return null;
@@ -532,6 +649,7 @@ function gl_donation_stats_collect()
     return array(
         'generated_at' => wp_date('c'),
         'hpos' => $hpos,
+        'cutoff' => $cutoff_local,
         'campaign' => array(
             'donation_total' => $donation_total,
             'donation_count' => $donation_count,
@@ -631,7 +749,7 @@ function gl_donation_stats_donation_count_sql($hpos, $cutoff_local, $cutoff_gmt)
     );
 }
 
-function gl_donation_stats_product_totals_sql($hpos)
+function gl_donation_stats_product_totals_sql($hpos, $cutoff_local, $cutoff_gmt)
 {
     global $wpdb;
 
@@ -641,37 +759,45 @@ function gl_donation_stats_product_totals_sql($hpos)
     if ($hpos) {
         $orders = $wpdb->prefix . 'wc_orders';
 
-        return "SELECT order_item_meta_product.meta_value AS product_id,
-                       COALESCE(SUM(order_item_meta.meta_value), 0) AS total_sales
-                FROM {$items} AS order_items
-                INNER JOIN {$itemmeta} AS order_item_meta_product
-                    ON order_items.order_item_id = order_item_meta_product.order_item_id
-                   AND order_item_meta_product.meta_key = '_product_id'
-                INNER JOIN {$itemmeta} AS order_item_meta
-                    ON order_items.order_item_id = order_item_meta.order_item_id
-                   AND order_item_meta.meta_key = '_line_total'
-                INNER JOIN {$orders} AS orders
-                    ON order_items.order_id = orders.id
-                WHERE order_items.order_item_type = 'line_item'
-                  AND orders.status IN ('wc-completed', 'wc-processing', 'wc-on-hold')
-                GROUP BY order_item_meta_product.meta_value";
+        return $wpdb->prepare(
+            "SELECT order_item_meta_product.meta_value AS product_id,
+                    COALESCE(SUM(order_item_meta.meta_value), 0) AS total_sales
+             FROM {$items} AS order_items
+             INNER JOIN {$itemmeta} AS order_item_meta_product
+                 ON order_items.order_item_id = order_item_meta_product.order_item_id
+                AND order_item_meta_product.meta_key = '_product_id'
+             INNER JOIN {$itemmeta} AS order_item_meta
+                 ON order_items.order_item_id = order_item_meta.order_item_id
+                AND order_item_meta.meta_key = '_line_total'
+             INNER JOIN {$orders} AS orders
+                 ON order_items.order_id = orders.id
+             WHERE order_items.order_item_type = 'line_item'
+               AND orders.status IN ('wc-completed', 'wc-processing', 'wc-on-hold')
+               AND orders.date_created_gmt >= %s
+             GROUP BY order_item_meta_product.meta_value",
+            $cutoff_gmt
+        );
     }
 
-    return "SELECT order_item_meta_product.meta_value AS product_id,
-                   COALESCE(SUM(order_item_meta.meta_value), 0) AS total_sales
-            FROM {$items} AS order_items
-            INNER JOIN {$itemmeta} AS order_item_meta_product
-                ON order_items.order_item_id = order_item_meta_product.order_item_id
-               AND order_item_meta_product.meta_key = '_product_id'
-            INNER JOIN {$itemmeta} AS order_item_meta
-                ON order_items.order_item_id = order_item_meta.order_item_id
-               AND order_item_meta.meta_key = '_line_total'
-            INNER JOIN {$wpdb->posts} AS posts
-                ON order_items.order_id = posts.ID
-            WHERE order_items.order_item_type = 'line_item'
-              AND posts.post_type = 'shop_order'
-              AND posts.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold')
-            GROUP BY order_item_meta_product.meta_value";
+    return $wpdb->prepare(
+        "SELECT order_item_meta_product.meta_value AS product_id,
+                COALESCE(SUM(order_item_meta.meta_value), 0) AS total_sales
+         FROM {$items} AS order_items
+         INNER JOIN {$itemmeta} AS order_item_meta_product
+             ON order_items.order_item_id = order_item_meta_product.order_item_id
+            AND order_item_meta_product.meta_key = '_product_id'
+         INNER JOIN {$itemmeta} AS order_item_meta
+             ON order_items.order_item_id = order_item_meta.order_item_id
+            AND order_item_meta.meta_key = '_line_total'
+         INNER JOIN {$wpdb->posts} AS posts
+             ON order_items.order_id = posts.ID
+         WHERE order_items.order_item_type = 'line_item'
+           AND posts.post_type = 'shop_order'
+           AND posts.post_status IN ('wc-completed', 'wc-processing', 'wc-on-hold')
+           AND posts.post_date >= %s
+         GROUP BY order_item_meta_product.meta_value",
+        $cutoff_local
+    );
 }
 
 function gl_donation_stats_write($directory, $payload)
