@@ -160,7 +160,7 @@ class GLG_Authnet_Admin {
     public function ajax_step() {
         $this->verify_ajax();
 
-        $job_id = isset($_POST['job']) ? sanitize_key(wp_unslash($_POST['job'])) : '';
+        $job_id = isset($_POST['job']) ? GLG_Authnet_Job::sanitize_id((string) wp_unslash($_POST['job'])) : '';
 
         $client = GLG_Authnet_Client::from_gateway();
         if (is_wp_error($client)) {
@@ -182,7 +182,7 @@ class GLG_Authnet_Admin {
             wp_die(esc_html__('You do not have permission to export transactions.', 'glg-authnet-reports'), 403);
         }
 
-        $job_id = isset($_GET['job']) ? sanitize_key(wp_unslash($_GET['job'])) : '';
+        $job_id = isset($_GET['job']) ? GLG_Authnet_Job::sanitize_id((string) wp_unslash($_GET['job'])) : '';
         $format = isset($_GET['format']) && 'csv' === $_GET['format'] ? 'csv' : 'xlsx';
 
         $state = GLG_Authnet_Job::load($job_id);

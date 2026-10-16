@@ -58,17 +58,26 @@ class GLG_Authnet_Job {
             'fetched'           => 0,
         );
 
-        $id = wp_generate_password(20, false);
+        $id = bin2hex(random_bytes(16));
         self::save($id, $state);
 
         return $id;
     }
 
     /**
+     * Validates a job ID read from a request. IDs are 32 lowercase hex characters, see create().
+     *
+     * @return string The ID, or '' if it is not a valid job ID.
+     */
+    public static function sanitize_id($raw) {
+        return is_string($raw) && preg_match('/^[a-f0-9]{32}$/', $raw) ? $raw : '';
+    }
+
+    /**
      * @return array|WP_Error
      */
     public static function load($id) {
-        $state = get_transient(self::TRANSIENT_PREFIX . $id);
+        $state = '' !== self::sanitize_id($id) ? get_transient(self::TRANSIENT_PREFIX . $id) : false;
 
         if (!is_array($state) || (int) $state['user'] !== get_current_user_id()) {
             return new WP_Error('glg_authnet_job_missing', __('This export has expired. Please start it again.', 'glg-authnet-reports'));
