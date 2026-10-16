@@ -33,8 +33,9 @@ GitHub Actions rsyncs **only** these paths to the Droplet:
 - `wp-content/themes/blocksy-child/`
 - `wp-content/mu-plugins/`
 - `wp-content/plugins/custom-checkout-fields/`
+- `wp-content/plugins/glg-authnet-reports/`
 
-WordPress core, the Blocksy parent theme, other plugins, uploads, and MySQL stay on the server and are updated in WP admin. Do not edit those three git-owned folders through WP admin — it would fight git. Parent Blocksy is not in this repo; keep it installed on the Droplet.
+WordPress core, the Blocksy parent theme, other plugins, uploads, and MySQL stay on the server and are updated in WP admin. Do not edit those git-owned folders through WP admin — it would fight git. Parent Blocksy is not in this repo; keep it installed on the Droplet.
 
 Remote destination is the Actions variable `DROPLET_WP_CONTENT_PATH` (the Droplet’s `wp-content` directory). The workflow does not run on push. Deploy from **Actions** → **Deploy** → **Run workflow**, and choose branch **master**. A run from any other branch fails before rsync. Check **Dry run** to preview changes without writing to the Droplet. Leave it unchecked to deploy.
 
@@ -70,7 +71,7 @@ nano /home/deploy/.ssh/authorized_keys
 chmod 600 /home/deploy/.ssh/authorized_keys
 chown -R deploy:deploy /home/deploy/.ssh
 
-for rel in themes/blocksy-child mu-plugins plugins/custom-checkout-fields; do
+for rel in themes/blocksy-child mu-plugins plugins/custom-checkout-fields plugins/glg-authnet-reports; do
   mkdir -p "${WP_CONTENT}/${rel}"
   chown -R deploy:www-data "${WP_CONTENT}/${rel}"
   find "${WP_CONTENT}/${rel}" -type d -exec chmod 775 {} \;
@@ -144,11 +145,12 @@ rsync -avz --progress \
   wp-content/uploads/
 ```
 
-`wp-content/plugins/custom-checkout-fields/` is tracked in git and deployed back to the Droplet. The plugins command above will replace that local folder with the server copy. Skip it with:
+`wp-content/plugins/custom-checkout-fields/` and `wp-content/plugins/glg-authnet-reports/` are tracked in git and deployed back to the Droplet. The plugins command above will replace those local folders with the server copies. Skip them with:
 
 ```bash
 rsync -avz --progress \
   --exclude 'custom-checkout-fields/' \
+  --exclude 'glg-authnet-reports/' \
   -e "ssh -i ~/.ssh/id_rsa_bjtilley" \
   root@143.244.165.219:/var/www/givelocalguide.org/wp-content/plugins/ \
   wp-content/plugins/

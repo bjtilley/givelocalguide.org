@@ -63,3 +63,7 @@ jobs:
           rsync "${rsync_flags[@]}" \
             "wp-content/plugins/custom-checkout-fields/" \
             "${DROPLET_USER}@${DROPLET_HOST}:${DROPLET_WP_CONTENT_PATH}/plugins/custom-checkout-fields/"
+
+          rsync "${rsync_flags[@]}" \
+            "wp-content/plugins/glg-authnet-reports/" \
+            "${DROPLET_USER}@${DROPLET_HOST}:${DROPLET_WP_CONTENT_PATH}/plugins/glg-authnet-reports/"
