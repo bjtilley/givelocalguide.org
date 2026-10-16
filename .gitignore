@@ -143,6 +143,8 @@ Thumbs.db
 !wp-content/mu-plugins/**
 !wp-content/plugins/custom-checkout-fields/
 !wp-content/plugins/custom-checkout-fields/**
+!wp-content/plugins/glg-authnet-reports/
+!wp-content/plugins/glg-authnet-reports/**
 # !wp-content/plugins/example-plugin/
 # !wp-content/themes/example-theme/
 !wp-content/themes/blocksy-child/
