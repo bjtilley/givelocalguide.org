@@ -25,7 +25,7 @@ if ( ! wp_doing_ajax() ) {
     <p class="form-row">
         <table class="gl_payment_table" style="width: 100%; border: none; margin-bottom: 10px;">
             <tr>
-                <td style="width: 70%"><img src="/wp-content/uploads/2025/09/first_bank_logo_sm.png" class="first-bank-logo" alt="First Bank Logo" /></td>
+                <td style="width: 70%"><img src="/wp-content/uploads/2026/10/49808.png" class="mostly-import-logo" alt="Mostly Import Auto Repair Logo" style="max-width: 100%; height: auto;" /></td>
                 <td style="width: 30%"><img src="/wp-content/uploads/2025/10/Basys_RGB_Primary-6.png" alt="Basys Logo" /></td>
                 <td></td>
             </tr>
@@ -33,10 +33,10 @@ if ( ! wp_doing_ajax() ) {
 
     </p>
     <p class="form-row">
-        100% of your donation goes to the nonprofit(s) you selected, thanks for <a href="https://localfirstbank.com/" rel="noopener noreferrer" target="_blank">First Bank</a>, <a href="https://basyspro.com/" rel="noopener noreferrer" target="_blank">Basys</a> and <a href="https://mountainx.com/" rel="noopener noreferrer" target="_blank"><em>Mountain Xpress</em></a> generously sponsoring the payment of credit card transaction and processing fees. Every penny counts!
+        100% of your donation goes to the nonprofit(s) you selected, thanks for <a href="https://www.mostlyimportautorepair.com/" rel="noopener noreferrer" target="_blank">Mostly Import Auto Repair</a>, <a href="https://basyspro.com/" rel="noopener noreferrer" target="_blank">Basys</a> and <a href="https://mountainx.com/" rel="noopener noreferrer" target="_blank"><em>Mountain Xpress</em></a> generously sponsoring the payment of credit card transaction and processing fees. Every penny counts!
     </p>
     <p class="form-row">
-        <img src="/wp-content/uploads/2025/10/EPC-Badge_2025.jpg" alt="Every Penny Counts Logo" style="width: 50%;" />
+        <img src="/wp-content/uploads/2026/10/EPC-Badge_2026.png" alt="Every Penny Counts Logo" style="width: 50%;" />
     </p>
 	<?php if ( WC()->cart && WC()->cart->needs_payment() ) : ?>
 		<ul class="wc_payment_methods payment_methods methods">
