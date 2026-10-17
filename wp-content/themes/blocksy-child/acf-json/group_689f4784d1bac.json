@@ -247,7 +247,9 @@
                     "post_type": [
                         "product"
                     ],
-                    "post_status": "",
+                    "post_status": [
+                        "publish"
+                    ],
                     "taxonomy": [
                         "product_cat:free-product-gift"
                     ],
@@ -330,5 +332,5 @@
     "description": "",
     "show_in_rest": 0,
     "display_title": "",
-    "modified": 1761570300
+    "modified": 1792263637
 }
