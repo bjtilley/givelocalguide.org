@@ -7,10 +7,16 @@ if (!defined('ABSPATH')) {
  * Turns getTransactionDetails payloads into export rows: one row per line item.
  *
  * The first 54 columns match Authorize.net's standard Transaction download, in the same order.
- * Line item columns follow. "Transaction First Row" is 1 on the first row of each transaction, so
- * amount columns can be summed without counting a transaction once per line item.
+ * "Overall donation amount" and the line item columns follow. "Transaction First Row" is 1 on the
+ * first row of each transaction, so amount columns can be summed without counting a transaction
+ * once per line item.
  */
 class GLG_Authnet_Report {
+    /** Default name of the fee line added by GL_Fee_Coverage (custom-checkout-fields). */
+    const FEE_COVERAGE_DEFAULT_LABEL = 'Card fee coverage';
+
+    const SUMMARY_HEADERS = array('Overall donation amount');
+
     const BASE_HEADERS = array(
         'Transaction ID', 'Transaction Status', 'Settlement Amount', 'Settlement Currency', 'Settlement Date/Time',
         'Authorization Amount', 'Authorization Currency', 'Submit Date/Time', 'Authorization Code', 'Reference Transaction ID',
@@ -32,7 +38,8 @@ class GLG_Authnet_Report {
 
     const MONEY_COLUMNS = array(
         'Settlement Amount', 'Authorization Amount', 'Total Amount', 'L2 - Tax', 'L2 - Freight',
-        'L2 - Duty', 'Available Card Balance', 'Approved Amount', 'Item Unit Price', 'Item Line Total',
+        'L2 - Duty', 'Available Card Balance', 'Approved Amount', 'Overall donation amount', 'Item Unit Price',
+        'Item Line Total',
     );
 
     const NUMBER_COLUMNS = array('Line #', 'Item Quantity', 'Transaction First Row');
@@ -92,7 +99,7 @@ class GLG_Authnet_Report {
     );
 
     public static function headers() {
-        return array_merge(self::BASE_HEADERS, self::ITEM_HEADERS);
+        return array_merge(self::BASE_HEADERS, self::SUMMARY_HEADERS, self::ITEM_HEADERS);
     }
 
     /**
@@ -190,6 +197,15 @@ class GLG_Authnet_Report {
             $items = array(null);
         }
 
+        // Settlement amount minus the donor's optional card fee coverage line.
+        $fee_coverage = 0.0;
+        foreach ($items as $item) {
+            if (is_array($item) && self::is_fee_coverage(self::text(self::get($item, 'name')))) {
+                $fee_coverage += (float) self::get($item, 'quantity', 0) * (float) self::get($item, 'unitPrice', 0);
+            }
+        }
+        $base['Overall donation amount'] = self::money(round((float) self::get($t, 'settleAmount') - $fee_coverage, 2));
+
         $rows = array();
         foreach ($items as $index => $item) {
             $line = array_fill_keys(self::ITEM_HEADERS, '');
@@ -213,6 +229,29 @@ class GLG_Authnet_Report {
         }
 
         return $rows;
+    }
+
+    /**
+     * True when a line item is the card fee coverage fee. Matches the default name and the label
+     * currently set in the Fee Coverage options, built the same way as GL_Fee_Coverage::get_label().
+     */
+    private static function is_fee_coverage($name) {
+        static $labels = null;
+
+        if (null === $labels) {
+            $labels = array(self::FEE_COVERAGE_DEFAULT_LABEL);
+
+            if (function_exists('get_field')) {
+                $value = get_field('cover_fee_label', 'option');
+                if (is_string($value) && trim($value) !== '') {
+                    $labels[] = mb_substr(trim(wp_strip_all_tags($value)), 0, 31);
+                }
+            }
+
+            $labels = array_map('strtolower', $labels);
+        }
+
+        return in_array(strtolower(trim($name)), $labels, true);
     }
 
     /**
